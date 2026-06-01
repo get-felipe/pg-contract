@@ -1,0 +1,103 @@
+name: False positive or false negative
+description: Report a query compatibility result that pg-contract got wrong.
+title: "compat: "
+labels:
+  - bug
+  - compatibility
+  - triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form when `pg-contract` reports a breaking query that should not be breaking, or misses a query that should be breaking.
+
+  - type: dropdown
+    id: mismatch
+    attributes:
+      label: Mismatch type
+      options:
+        - False positive: pg-contract reports a breakage that should pass
+        - False negative: pg-contract misses a breakage that should fail
+        - Invalid-before behavior seems wrong
+        - Unsure
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: pg-contract version
+      placeholder: v0.1.0-alpha.1
+    validations:
+      required: true
+
+  - type: input
+    id: postgres-version
+    attributes:
+      label: Postgres version
+      placeholder: PostgreSQL 18.3
+    validations:
+      required: true
+
+  - type: textarea
+    id: before-schema
+    attributes:
+      label: Before schema
+      description: Minimal schema that represents the current/base state.
+      render: sql
+    validations:
+      required: true
+
+  - type: textarea
+    id: after-schema
+    attributes:
+      label: After schema
+      description: Minimal schema that represents the proposed/target state.
+      render: sql
+    validations:
+      required: true
+
+  - type: textarea
+    id: query
+    attributes:
+      label: Query file
+      description: Include the `-- name:` comment when relevant.
+      render: sql
+    validations:
+      required: true
+
+  - type: textarea
+    id: config
+    attributes:
+      label: pg-contract.yaml
+      description: Include only if parameter types or config are relevant.
+      render: yaml
+    validations:
+      required: false
+
+  - type: textarea
+    id: output
+    attributes:
+      label: pg-contract output
+      description: Redact secrets and URLs.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Why is this result wrong?
+      description: Explain the expected compatibility result.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: The example is minimal and can run against disposable databases.
+          required: true
+        - label: I removed credentials, database URLs, customer data, and proprietary schema details.
+          required: true

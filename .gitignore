@@ -1,0 +1,40 @@
+# Go
+bin/
+dist/
+coverage.out
+coverage/
+*.coverprofile
+*.prof
+*.test
+/pg-contract
+
+# Local environment
+.env
+.env.*
+!.env.example
+.envrc
+.direnv/
+
+# Unversioned planning drafts
+work/
+scratch/
+local-plans/
+
+# Editors and OS files
+.DS_Store
+.idea/
+.vscode/
+
+# Temporary files
+tmp/
+.tmp/
+.cache/
+*.log
+
+# Local Postgres/Docker test data
+.pgdata/
+postgres-data/
+docker-data/
+
+# Test output
+test-results/

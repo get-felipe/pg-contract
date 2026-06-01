@@ -1,0 +1,5 @@
+queries:
+  search.count_tags:
+    params:
+      - text[]
+

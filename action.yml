@@ -1,0 +1,102 @@
+name: pg-contract
+description: Check whether existing Postgres application queries still work after a schema change.
+
+branding:
+  icon: database
+  color: blue
+
+inputs:
+  before-url:
+    description: Postgres URL for the database containing the current/base schema.
+    required: true
+  after-url:
+    description: Postgres URL for the database containing the proposed/target schema.
+    required: true
+  queries:
+    description: Directory containing .sql query files to validate.
+    required: true
+  schema-before:
+    description: Optional SQL file to load into before-url before checking queries.
+    required: false
+    default: ""
+  schema-after:
+    description: Optional SQL file to load into after-url before checking queries.
+    required: false
+    default: ""
+  config:
+    description: Optional pg-contract.yaml path. When omitted, pg-contract auto-loads ./pg-contract.yaml if present.
+    required: false
+    default: ""
+  no-config:
+    description: Set to true to disable automatic config loading.
+    required: false
+    default: "false"
+  timeout:
+    description: Per-connection timeout used by pg-contract.
+    required: false
+    default: 30s
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Go
+      uses: actions/setup-go@v6
+      with:
+        go-version-file: ${{ github.action_path }}/go.mod
+        cache-dependency-path: ${{ github.action_path }}/go.sum
+
+    - name: Check Postgres query compatibility
+      shell: bash
+      env:
+        PG_CONTRACT_ACTION_PATH: ${{ github.action_path }}
+        PG_CONTRACT_BEFORE_URL: ${{ inputs.before-url }}
+        PG_CONTRACT_AFTER_URL: ${{ inputs.after-url }}
+        PG_CONTRACT_QUERIES: ${{ inputs.queries }}
+        PG_CONTRACT_SCHEMA_BEFORE: ${{ inputs.schema-before }}
+        PG_CONTRACT_SCHEMA_AFTER: ${{ inputs.schema-after }}
+        PG_CONTRACT_CONFIG: ${{ inputs.config }}
+        PG_CONTRACT_NO_CONFIG: ${{ inputs.no-config }}
+        PG_CONTRACT_TIMEOUT: ${{ inputs.timeout }}
+      run: |
+        set -euo pipefail
+
+        case "$PG_CONTRACT_NO_CONFIG" in
+          true|false)
+            ;;
+          *)
+            echo "::error title=pg-contract::no-config must be true or false"
+            exit 2
+            ;;
+        esac
+
+        if [ "$PG_CONTRACT_NO_CONFIG" = "true" ] && [ -n "$PG_CONTRACT_CONFIG" ]; then
+          echo "::error title=pg-contract::config and no-config cannot be used together"
+          exit 2
+        fi
+
+        args=(
+          check
+          --before-url "$PG_CONTRACT_BEFORE_URL"
+          --after-url "$PG_CONTRACT_AFTER_URL"
+          --queries "$PG_CONTRACT_QUERIES"
+          --format github
+          --timeout "$PG_CONTRACT_TIMEOUT"
+        )
+
+        if [ -n "$PG_CONTRACT_SCHEMA_BEFORE" ]; then
+          args+=(--schema-before "$PG_CONTRACT_SCHEMA_BEFORE")
+        fi
+
+        if [ -n "$PG_CONTRACT_SCHEMA_AFTER" ]; then
+          args+=(--schema-after "$PG_CONTRACT_SCHEMA_AFTER")
+        fi
+
+        if [ "$PG_CONTRACT_NO_CONFIG" = "true" ]; then
+          args+=(--no-config)
+        elif [ -n "$PG_CONTRACT_CONFIG" ]; then
+          args+=(--config "$PG_CONTRACT_CONFIG")
+        fi
+
+        pg_contract_bin="${RUNNER_TEMP:-/tmp}/pg-contract"
+        go build -o "$pg_contract_bin" "$PG_CONTRACT_ACTION_PATH/cmd/pg-contract"
+        "$pg_contract_bin" "${args[@]}"

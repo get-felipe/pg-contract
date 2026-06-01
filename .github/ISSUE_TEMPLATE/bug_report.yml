@@ -1,0 +1,89 @@
+name: Bug report
+description: Report a reproducible bug in pg-contract.
+title: "bug: "
+labels:
+  - bug
+  - triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Please keep examples minimal and do not include credentials, production database URLs, customer data, or proprietary schema details.
+
+  - type: input
+    id: version
+    attributes:
+      label: pg-contract version
+      description: Use `pg-contract version`, a tag, or a commit SHA.
+      placeholder: v0.1.0-alpha.1
+    validations:
+      required: true
+
+  - type: input
+    id: postgres-version
+    attributes:
+      label: Postgres version
+      placeholder: PostgreSQL 18.3
+    validations:
+      required: true
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Affected surface
+      options:
+        - CLI
+        - GitHub Action
+        - JSON output
+        - GitHub annotations
+        - Config
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: command
+    attributes:
+      label: Command or workflow step
+      description: Redact database URLs and secrets.
+      render: sh
+      placeholder: |
+        pg-contract check --before-url "$PG_CONTRACT_BEFORE_URL" --after-url "$PG_CONTRACT_AFTER_URL" --queries ./queries
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should have happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What happened instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Include minimal before schema, after schema, query file, and config when relevant.
+      render: sql
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I removed credentials, database URLs, customer data, and proprietary schema details.
+          required: true
+        - label: I searched existing issues before opening this one.
+          required: true

@@ -1,0 +1,70 @@
+name: Feature request
+description: Propose a focused improvement to pg-contract.
+title: "feat: "
+labels:
+  - enhancement
+  - triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        `pg-contract` is intentionally narrow. Please explain how the feature strengthens Postgres query compatibility checks rather than broadening into migration generation, ORM behavior, or hosted workflows.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user problem or workflow gap does this solve?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the smallest useful shape of the feature.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - CLI
+        - Query loading
+        - Config
+        - Diagnostics
+        - JSON output
+        - GitHub Action
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: example
+    attributes:
+      label: Example
+      description: Show the command, config, output, or SQL fixture you would expect.
+      render: text
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What workaround exists today, and why is it insufficient?
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: This is related to Postgres query compatibility checks.
+          required: true
+        - label: This does not require pg-contract to run production migrations or own a hosted service.
+          required: true

@@ -1,0 +1,65 @@
+name: Action Self-Test
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  composite-action:
+    name: Composite action
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Create scratch databases
+        run: |
+          docker exec "${{ job.services.postgres.id }}" createdb -U postgres pg_contract_before
+          docker exec "${{ job.services.postgres.id }}" createdb -U postgres pg_contract_after
+
+      - name: Run breaking-change example
+        id: breaking
+        uses: ./
+        continue-on-error: true
+        with:
+          before-url: postgres://postgres:postgres@localhost:${{ job.services.postgres.ports['5432'] }}/pg_contract_before?sslmode=disable
+          after-url: postgres://postgres:postgres@localhost:${{ job.services.postgres.ports['5432'] }}/pg_contract_after?sslmode=disable
+          schema-before: examples/basic/schema-before.sql
+          schema-after: examples/basic/schema-after.sql
+          queries: examples/basic/queries
+          no-config: true
+
+      - name: Assert breaking-change example failed
+        if: steps.breaking.outcome != 'failure'
+        run: |
+          echo "::error title=pg-contract self-test::breaking-change example should fail the action"
+          exit 1
+
+      - name: Run compatible typed-params example
+        uses: ./
+        with:
+          before-url: postgres://postgres:postgres@localhost:${{ job.services.postgres.ports['5432'] }}/pg_contract_before?sslmode=disable
+          after-url: postgres://postgres:postgres@localhost:${{ job.services.postgres.ports['5432'] }}/pg_contract_after?sslmode=disable
+          schema-before: examples/typed-params/schema-before.sql
+          schema-after: examples/typed-params/schema-after.sql
+          queries: examples/typed-params/queries
+          config: examples/typed-params/pg-contract.yaml

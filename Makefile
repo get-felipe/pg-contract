@@ -7,7 +7,7 @@ EXPECTED_EXIT ?= 1
 GORELEASER_REMOTE_URL ?= https://github.com/get-felipe/pg-contract.git
 GORELEASER_GIT_CONFIG = GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=remote.origin.url GIT_CONFIG_VALUE_0=$(GORELEASER_REMOTE_URL) GIT_CONFIG_KEY_1=remote.origin.fetch GIT_CONFIG_VALUE_1=+refs/heads/*:refs/remotes/origin/*
 
-.PHONY: build check example example-ambiguous-column example-basic example-init example-missing-table example-typed-params fmt release-check release-snapshot test test-integration tidy
+.PHONY: build check example example-ambiguous-column example-basic example-enum-value example-function-signature example-init example-missing-table example-search-path example-typed-params example-view-changed fmt release-check release-snapshot test test-integration tidy
 
 build:
 	@go build -o bin/pg-contract ./cmd/pg-contract
@@ -55,6 +55,18 @@ example-missing-table: example
 
 example-ambiguous-column: EXAMPLE := ambiguous-column
 example-ambiguous-column: example
+
+example-view-changed: EXAMPLE := view-changed
+example-view-changed: example
+
+example-function-signature: EXAMPLE := function-signature
+example-function-signature: example
+
+example-enum-value: EXAMPLE := enum-value
+example-enum-value: example
+
+example-search-path: EXAMPLE := search-path
+example-search-path: example
 
 example-typed-params: EXAMPLE := typed-params
 example-typed-params: CONFIG := examples/typed-params/pg-contract.yaml

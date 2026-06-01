@@ -254,6 +254,8 @@ func Reason(err *DBError) string {
 		return "Postgres could not infer a parameter type for this query."
 	case "42804":
 		return "The query has a datatype mismatch against the target schema."
+	case "22P02":
+		return "A literal or parameter value cannot be represented by the target Postgres type."
 	case "42601":
 		return "The query is not valid SQL for this Postgres database."
 	default:
@@ -282,6 +284,8 @@ func Suggestion(err *DBError) string {
 		return "Add explicit casts in the query so Postgres can infer parameter types."
 	case "42804":
 		return "Align the query expression types with the target schema."
+	case "22P02":
+		return "Keep the old accepted type values during this deploy, or update this query before changing the type contract."
 	default:
 		return "Keep the old database contract until deployed application code no longer depends on it."
 	}

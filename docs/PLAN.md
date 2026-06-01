@@ -12,7 +12,7 @@ Build a narrow local CLI that proves the core compatibility check before adding 
 - [x] Initialize the repository with Go module, basic CLI skeleton, tests, Makefile, CI, and public repo hygiene files.
 - [x] Write project brief, initial plan, reference analysis, and local maintenance notes.
 - [x] Define the v0.1 query file format, including sqlc-style `-- name:` comments.
-- [x] Add idempotent example fixtures for column removal, ambiguous column, and missing table.
+- [x] Add idempotent example fixtures for column removal, ambiguous column, missing table, changed views, function signature changes, enum value changes, and `search_path` changes.
 - [x] Implement schema loading into user-provided Postgres databases.
 - [x] Implement query preparation against the before and after schemas.
 - [x] Add strict YAML config for explicit query parameter types.

@@ -176,10 +176,10 @@ See [GitHub Actions](docs/GITHUB_ACTIONS.md) for a complete workflow.
 
 Near-term:
 
-- Publish the first alpha release.
+- Prepare the next alpha release with broader fixture coverage.
 - Improve diagnostics for more Postgres SQLSTATEs.
 - Add PR-focused documentation for common CI setups.
-- Add more compatibility fixtures for functions, views, enums, and search paths.
+- Add focused fixtures for result-shape limitations and additional SQLSTATEs.
 
 Later:
 
@@ -213,6 +213,10 @@ cp .env.example .env.local
 make example-basic
 make example-missing-table
 make example-ambiguous-column
+make example-view-changed
+make example-function-signature
+make example-enum-value
+make example-search-path
 make example-typed-params
 make example-basic FORMAT=json
 ```

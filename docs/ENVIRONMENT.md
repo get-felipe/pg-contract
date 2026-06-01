@@ -96,6 +96,10 @@ make example-init
 make example-basic
 make example-missing-table
 make example-ambiguous-column
+make example-view-changed
+make example-function-signature
+make example-enum-value
+make example-search-path
 make example-typed-params
 make example-basic FORMAT=json
 make example-typed-params FORMAT=json

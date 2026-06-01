@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -29,9 +30,27 @@ func TestExitCode(t *testing.T) {
 }
 
 func TestReason(t *testing.T) {
-	reason := Reason(&DBError{Code: "42703", Message: "column does not exist"})
-	if reason == "column does not exist" {
-		t.Fatal("expected SQLSTATE-specific reason, got raw message")
+	tests := []struct {
+		name string
+		err  *DBError
+	}{
+		{
+			name: "undefined column",
+			err:  &DBError{Code: "42703", Message: "column does not exist"},
+		},
+		{
+			name: "invalid text representation",
+			err:  &DBError{Code: "22P02", Message: "invalid input value for enum"},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			reason := Reason(test.err)
+			if reason == test.err.Message {
+				t.Fatal("expected SQLSTATE-specific reason, got raw message")
+			}
+		})
 	}
 }
 
@@ -152,6 +171,74 @@ select array_length($1, 1) as tag_count;
 	}
 }
 
+func TestRunWithPostgresExampleFixtures(t *testing.T) {
+	beforeURL := os.Getenv("PG_CONTRACT_TEST_BEFORE_URL")
+	afterURL := os.Getenv("PG_CONTRACT_TEST_AFTER_URL")
+	if beforeURL == "" || afterURL == "" {
+		t.Skip("set PG_CONTRACT_TEST_BEFORE_URL and PG_CONTRACT_TEST_AFTER_URL to run integration test")
+	}
+	if beforeURL == afterURL {
+		t.Skip("integration test requires separate before and after databases")
+	}
+
+	tests := []struct {
+		name     string
+		config   string
+		exitCode int
+		sqlstate string
+	}{
+		{name: "basic", exitCode: 1, sqlstate: "42703"},
+		{name: "missing-table", exitCode: 1, sqlstate: "42P01"},
+		{name: "ambiguous-column", exitCode: 1, sqlstate: "42702"},
+		{name: "typed-params", config: "pg-contract.yaml", exitCode: 0},
+		{name: "view-changed", exitCode: 1, sqlstate: "42703"},
+		{name: "function-signature", exitCode: 1, sqlstate: "42883"},
+		{name: "enum-value", exitCode: 1, sqlstate: "22P02"},
+		{name: "search-path", exitCode: 1, sqlstate: "42P01"},
+	}
+
+	repoRoot := testRepoRoot(t)
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			exampleDir := filepath.Join(repoRoot, "examples", test.name)
+			opts := Options{
+				BeforeURL:    beforeURL,
+				AfterURL:     afterURL,
+				SchemaBefore: filepath.Join(exampleDir, "schema-before.sql"),
+				SchemaAfter:  filepath.Join(exampleDir, "schema-after.sql"),
+				QueriesPath:  filepath.Join(exampleDir, "queries"),
+			}
+			if test.config != "" {
+				opts.ConfigPath = filepath.Join(exampleDir, test.config)
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			report, err := Run(ctx, opts)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if got := ExitCode(report); got != test.exitCode {
+				t.Fatalf("expected exit code %d, got %d with report %#v", test.exitCode, got, report)
+			}
+			if test.sqlstate == "" {
+				return
+			}
+
+			breaking := report.Breaking()
+			if len(breaking) != 1 {
+				t.Fatalf("expected 1 breaking query, got %d", len(breaking))
+			}
+			if breaking[0].After.Error == nil || breaking[0].After.Error.Code != test.sqlstate {
+				t.Fatalf("expected SQLSTATE %s, got %#v", test.sqlstate, breaking[0].After.Error)
+			}
+		})
+	}
+}
+
 func dropIntegrationTable(t *testing.T, url string, table string) {
 	t.Helper()
 
@@ -169,4 +256,14 @@ func dropIntegrationTable(t *testing.T, url string, table string) {
 	if err != nil {
 		t.Logf("cleanup drop failed: %v", err)
 	}
+}
+
+func testRepoRoot(t *testing.T) string {
+	t.Helper()
+
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("could not resolve test file path")
+	}
+	return filepath.Clean(filepath.Join(filepath.Dir(file), "..", ".."))
 }

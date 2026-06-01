@@ -50,6 +50,74 @@ type DBError struct {
 	ConstraintName string
 }
 
+type Diagnostic struct {
+	Reason     string
+	Suggestion string
+}
+
+var diagnosticsBySQLState = map[string]Diagnostic{
+	"22P02": {
+		Reason:     "A SQL literal or cast cannot be represented by the target Postgres type.",
+		Suggestion: "Keep the old accepted type values during this deploy, or update this query before changing the type contract.",
+	},
+	"3F000": {
+		Reason:     "A schema referenced by this query does not exist in the target database.",
+		Suggestion: "Keep the schema available, restore the expected search path, or update the query to use the new schema name.",
+	},
+	"42601": {
+		Reason:     "The query is not valid SQL for this Postgres database.",
+		Suggestion: "Fix the SQL syntax before relying on this query contract.",
+	},
+	"42702": {
+		Reason:     "A column reference is ambiguous in the target schema.",
+		Suggestion: "Qualify the ambiguous column with a table name or alias.",
+	},
+	"42703": {
+		Reason:     "A column referenced by this query does not exist in the target schema.",
+		Suggestion: "Keep the old column until deployed application code no longer reads it, or update this query before removing the column.",
+	},
+	"42704": {
+		Reason:     "An object referenced by this query does not exist in the target schema.",
+		Suggestion: "Keep the referenced object available through the deploy, or update the query to reference its replacement.",
+	},
+	"42725": {
+		Reason:     "A function call in this query is ambiguous in the target schema.",
+		Suggestion: "Add explicit casts or qualify the function call so Postgres can choose the intended overload.",
+	},
+	"42804": {
+		Reason:     "The query has a datatype mismatch against the target schema.",
+		Suggestion: "Align the query expression types with the target schema, or keep the previous column or function type until callers are updated.",
+	},
+	"42809": {
+		Reason:     "An object referenced by this query has the wrong kind in the target schema.",
+		Suggestion: "Keep the previous object kind available, or update the query to use the replacement table, view, function, or type.",
+	},
+	"42846": {
+		Reason:     "A cast or coercion used by this query is not valid for the target schema.",
+		Suggestion: "Keep the old type contract, add an explicit compatible cast, or update the query for the new type.",
+	},
+	"42883": {
+		Reason:     "A function or operator used by this query does not exist for the inferred argument types.",
+		Suggestion: "Keep a compatible function/operator signature, add explicit casts, or update this query before changing the callable contract.",
+	},
+	"42P01": {
+		Reason:     "A table or view referenced by this query does not exist in the target schema.",
+		Suggestion: "Keep the table or view during this deploy, restore the expected search path, or update this query before removing or renaming it.",
+	},
+	"42P02": {
+		Reason:     "A parameter referenced by this query is not defined for the prepared statement.",
+		Suggestion: "Check positional parameters and explicit parameter type config for this query.",
+	},
+	"42P10": {
+		Reason:     "A column reference or constraint inference clause is not valid for the target schema.",
+		Suggestion: "Update the query to match the target indexes, constraints, or grouping rules.",
+	},
+	"42P18": {
+		Reason:     "Postgres could not infer a parameter type for this query.",
+		Suggestion: "Add explicit casts in the query or configure parameter types in pg-contract.yaml.",
+	},
+}
+
 func (e *DBError) Error() string {
 	if e == nil {
 		return ""
@@ -235,58 +303,31 @@ func ExitCode(report *Report) int {
 }
 
 func Reason(err *DBError) string {
-	if err == nil {
-		return "Unknown validation failure."
-	}
-
-	switch err.Code {
-	case "42703":
-		return "A column referenced by this query does not exist in the target schema."
-	case "42P01":
-		return "A table or view referenced by this query does not exist in the target schema."
-	case "42702":
-		return "A column reference is ambiguous in the target schema."
-	case "42883":
-		return "A function or operator used by this query does not exist for the inferred argument types."
-	case "42704":
-		return "An object referenced by this query does not exist in the target schema."
-	case "42P18":
-		return "Postgres could not infer a parameter type for this query."
-	case "42804":
-		return "The query has a datatype mismatch against the target schema."
-	case "22P02":
-		return "A literal or parameter value cannot be represented by the target Postgres type."
-	case "42601":
-		return "The query is not valid SQL for this Postgres database."
-	default:
-		if err.Message != "" {
-			return err.Message
-		}
-		return "Postgres rejected this query for the target schema."
-	}
+	return Classify(err).Reason
 }
 
 func Suggestion(err *DBError) string {
+	return Classify(err).Suggestion
+}
+
+func Classify(err *DBError) Diagnostic {
 	if err == nil {
-		return "Inspect the Postgres error and update either the schema change or the query contract."
+		return Diagnostic{
+			Reason:     "Unknown validation failure.",
+			Suggestion: "Inspect the Postgres error and update either the schema change or the query contract.",
+		}
 	}
 
-	switch err.Code {
-	case "42703":
-		return "Keep the old column until deployed application code no longer reads it, or update this query before removing the column."
-	case "42P01":
-		return "Keep the table or view during this deploy, or update this query before removing or renaming it."
-	case "42702":
-		return "Qualify the ambiguous column with a table name or alias."
-	case "42883":
-		return "Check function/operator signatures and parameter types used by this query."
-	case "42P18":
-		return "Add explicit casts in the query so Postgres can infer parameter types."
-	case "42804":
-		return "Align the query expression types with the target schema."
-	case "22P02":
-		return "Keep the old accepted type values during this deploy, or update this query before changing the type contract."
-	default:
-		return "Keep the old database contract until deployed application code no longer depends on it."
+	if diagnostic, ok := diagnosticsBySQLState[err.Code]; ok {
+		return diagnostic
+	}
+
+	reason := "Postgres rejected this query for the target schema."
+	if err.Message != "" {
+		reason = err.Message
+	}
+	return Diagnostic{
+		Reason:     reason,
+		Suggestion: "Keep the old database contract until deployed application code no longer depends on it.",
 	}
 }

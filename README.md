@@ -31,7 +31,7 @@ Schema diff tools can tell you what changed in the database. Migration linters c
 From a tagged release:
 
 ```sh
-go install github.com/get-felipe/pg-contract/cmd/pg-contract@latest
+go install github.com/get-felipe/pg-contract/cmd/pg-contract@v0.1.0-alpha.1
 ```
 
 From source:
@@ -44,6 +44,8 @@ make build
 ```
 
 GitHub Release archives are produced for Linux, macOS, and Windows on `amd64` and `arm64`. Each release includes a SHA-256 checksum file.
+
+See [Installation](docs/INSTALLATION.md) for release archive downloads, checksum verification, and platform-specific commands.
 
 ## Quick Start
 
@@ -237,6 +239,7 @@ Out of scope:
 ## Documentation
 
 - [Project brief](docs/PROJECT_BRIEF.md)
+- [Installation](docs/INSTALLATION.md)
 - [Changelog](CHANGELOG.md)
 - [Plan](docs/PLAN.md)
 - [Environment](docs/ENVIRONMENT.md)

@@ -6,7 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-No unreleased changes yet.
+### Added
+
+- Installation documentation for pinned Go installs and GitHub Release archives with checksum verification.
 
 ## [0.1.0-alpha.1] - 2026-06-01
 

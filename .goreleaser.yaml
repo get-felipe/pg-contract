@@ -36,6 +36,7 @@ archives:
       - LICENSE
       - README.md
       - CHANGELOG.md
+      - docs/INSTALLATION.md
       - docs/CONFIGURATION.md
       - docs/GITHUB_ACTIONS.md
 

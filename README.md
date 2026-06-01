@@ -251,6 +251,7 @@ Out of scope:
 - [Environment](docs/ENVIRONMENT.md)
 - [Configuration](docs/CONFIGURATION.md)
 - [Diagnostics](docs/DIAGNOSTICS.md)
+- [Query manifest v0.2 design](docs/QUERY_MANIFEST_V02.md)
 - [GitHub Actions](docs/GITHUB_ACTIONS.md)
 - [Releasing](docs/RELEASING.md)
 - [Reference analysis](docs/REFERENCE_ANALYSIS.md)

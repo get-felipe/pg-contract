@@ -39,6 +39,7 @@ archives:
       - docs/INSTALLATION.md
       - docs/CONFIGURATION.md
       - docs/DIAGNOSTICS.md
+      - docs/QUERY_MANIFEST_V02.md
       - docs/GITHUB_ACTIONS.md
 
 checksum:

@@ -88,3 +88,7 @@ The first version accepts conservative Postgres type names:
 - multi-word names such as `timestamp with time zone`.
 
 Unsupported type syntax is rejected before connecting to Postgres. This keeps config errors explicit and avoids embedding arbitrary SQL in generated `PREPARE` statements.
+
+## Future Manifest Design
+
+The current config shape is intentionally small for the alpha release. See [Query Manifest v0.2 Design](QUERY_MANIFEST_V02.md) for the proposed next iteration covering query sets, multiple query roots, schema assumptions, and migration notes.

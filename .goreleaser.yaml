@@ -43,6 +43,9 @@ checksum:
   name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
   algorithm: sha256
 
+release:
+  prerelease: auto
+
 snapshot:
   version_template: "{{ incpatch .Version }}-next"
 

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -29,28 +30,56 @@ func TestExitCode(t *testing.T) {
 	}
 }
 
-func TestReason(t *testing.T) {
+func TestDiagnostics(t *testing.T) {
 	tests := []struct {
-		name string
-		err  *DBError
+		code           string
+		message        string
+		reasonContains string
+		fixContains    string
 	}{
-		{
-			name: "undefined column",
-			err:  &DBError{Code: "42703", Message: "column does not exist"},
-		},
-		{
-			name: "invalid text representation",
-			err:  &DBError{Code: "22P02", Message: "invalid input value for enum"},
-		},
+		{code: "22P02", message: "invalid input value for enum", reasonContains: "literal or cast", fixContains: "accepted type values"},
+		{code: "3F000", message: "schema does not exist", reasonContains: "schema", fixContains: "search path"},
+		{code: "42601", message: "syntax error", reasonContains: "not valid SQL", fixContains: "syntax"},
+		{code: "42702", message: "column reference is ambiguous", reasonContains: "ambiguous", fixContains: "Qualify"},
+		{code: "42703", message: "column does not exist", reasonContains: "column", fixContains: "old column"},
+		{code: "42704", message: "object does not exist", reasonContains: "object", fixContains: "referenced object"},
+		{code: "42725", message: "function is not unique", reasonContains: "function call", fixContains: "explicit casts"},
+		{code: "42804", message: "datatype mismatch", reasonContains: "datatype mismatch", fixContains: "expression types"},
+		{code: "42809", message: "wrong object type", reasonContains: "wrong kind", fixContains: "object kind"},
+		{code: "42846", message: "cannot cast type", reasonContains: "cast or coercion", fixContains: "compatible cast"},
+		{code: "42883", message: "function does not exist", reasonContains: "function or operator", fixContains: "function/operator signature"},
+		{code: "42P01", message: "relation does not exist", reasonContains: "table or view", fixContains: "search path"},
+		{code: "42P02", message: "there is no parameter $1", reasonContains: "parameter", fixContains: "parameter type config"},
+		{code: "42P10", message: "invalid column reference", reasonContains: "column reference", fixContains: "constraints"},
+		{code: "42P18", message: "could not determine data type", reasonContains: "infer a parameter type", fixContains: "pg-contract.yaml"},
 	}
 
 	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			reason := Reason(test.err)
-			if reason == test.err.Message {
+		t.Run(test.code, func(t *testing.T) {
+			err := &DBError{Code: test.code, Message: test.message}
+			diagnostic := Classify(err)
+			if diagnostic.Reason == test.message {
 				t.Fatal("expected SQLSTATE-specific reason, got raw message")
 			}
+			if !strings.Contains(diagnostic.Reason, test.reasonContains) {
+				t.Fatalf("expected reason to contain %q, got %q", test.reasonContains, diagnostic.Reason)
+			}
+			if !strings.Contains(diagnostic.Suggestion, test.fixContains) {
+				t.Fatalf("expected suggestion to contain %q, got %q", test.fixContains, diagnostic.Suggestion)
+			}
 		})
+	}
+}
+
+func TestUnknownDiagnosticFallsBackToPostgresMessage(t *testing.T) {
+	err := &DBError{Code: "99999", Message: "custom extension error"}
+
+	diagnostic := Classify(err)
+	if diagnostic.Reason != err.Message {
+		t.Fatalf("expected fallback reason %q, got %q", err.Message, diagnostic.Reason)
+	}
+	if diagnostic.Suggestion == "" {
+		t.Fatal("expected fallback suggestion")
 	}
 }
 

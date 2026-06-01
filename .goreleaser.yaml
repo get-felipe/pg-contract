@@ -38,6 +38,7 @@ archives:
       - CHANGELOG.md
       - docs/INSTALLATION.md
       - docs/CONFIGURATION.md
+      - docs/DIAGNOSTICS.md
       - docs/GITHUB_ACTIONS.md
 
 checksum:

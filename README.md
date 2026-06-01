@@ -148,6 +148,8 @@ pg-contract check \
 
 JSON reports include status, summary counts, query source locations, SQLSTATE, and diagnostic fields. They do not include database URLs or raw query text.
 
+See [Diagnostics](docs/DIAGNOSTICS.md) for the SQLSTATE mappings behind text, JSON, and GitHub annotation output.
+
 ## GitHub Actions
 
 ```yaml
@@ -248,6 +250,7 @@ Out of scope:
 - [Plan](docs/PLAN.md)
 - [Environment](docs/ENVIRONMENT.md)
 - [Configuration](docs/CONFIGURATION.md)
+- [Diagnostics](docs/DIAGNOSTICS.md)
 - [GitHub Actions](docs/GITHUB_ACTIONS.md)
 - [Releasing](docs/RELEASING.md)
 - [Reference analysis](docs/REFERENCE_ANALYSIS.md)

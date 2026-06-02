@@ -60,3 +60,23 @@ func TestNewJSONReportInvalidBefore(t *testing.T) {
 		t.Fatalf("expected invalid_before result, got %q", got.Results[0].Status)
 	}
 }
+
+func TestNewJSONReportIncludesManifestMetadata(t *testing.T) {
+	report := &check.Report{Results: []check.Result{
+		{
+			QuerySet: "app",
+			Tags:     []string{"ci", "customer-facing"},
+			Query:    query.Query{Name: "customers.find", File: "queries/find.sql", StartLine: 2},
+			Before:   check.Outcome{OK: true},
+			After:    check.Outcome{OK: true},
+		},
+	}}
+
+	got := NewJSONReport(report)
+	if got.Results[0].QuerySet != "app" {
+		t.Fatalf("expected query_set app, got %q", got.Results[0].QuerySet)
+	}
+	if len(got.Results[0].Tags) != 2 || got.Results[0].Tags[0] != "ci" || got.Results[0].Tags[1] != "customer-facing" {
+		t.Fatalf("unexpected tags: %#v", got.Results[0].Tags)
+	}
+}

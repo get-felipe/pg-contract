@@ -6,7 +6,7 @@ The action expects your job to prepare two Postgres databases that represent the
 
 ## Composite Action
 
-Use a pinned tag or commit SHA in real workflows. The examples use the planned first alpha tag.
+Use a pinned tag or commit SHA in real workflows.
 
 ```yaml
 name: pg-contract
@@ -42,7 +42,7 @@ The action always uses GitHub annotation output. Breaking queries appear as work
 | --- | --- | --- | --- |
 | `before-url` | Yes | | Postgres URL for the current/base schema. |
 | `after-url` | Yes | | Postgres URL for the proposed/target schema. |
-| `queries` | Yes | | Directory containing `.sql` query files. |
+| `queries` | Required unless using manifest v0.2 | | Directory containing `.sql` query files. |
 | `schema-before` | No | | Optional SQL file to load into `before-url` before checking. |
 | `schema-after` | No | | Optional SQL file to load into `after-url` before checking. |
 | `config` | No | | Optional `pg-contract.yaml` path. |
@@ -50,6 +50,17 @@ The action always uses GitHub annotation output. Breaking queries appear as work
 | `timeout` | No | `30s` | Per-connection timeout. |
 
 The command auto-loads `pg-contract.yaml` from the workflow working directory. Set `config` if the file lives elsewhere, or set `no-config: true` if the workflow should ignore it.
+
+When `config` points to a manifest v0.2 file with `query_sets`, omit `queries`, `schema-before`, and `schema-after` from the action inputs:
+
+```yaml
+- name: Check Postgres query compatibility
+  uses: get-felipe/pg-contract@v0.1.0-alpha.3
+  with:
+    before-url: ${{ secrets.PG_CONTRACT_BEFORE_URL }}
+    after-url: ${{ secrets.PG_CONTRACT_AFTER_URL }}
+    config: pg-contract.yaml
+```
 
 Generate a starter config locally with:
 

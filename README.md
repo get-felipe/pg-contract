@@ -10,7 +10,7 @@ It is not a schema diff tool, migration runner, ORM, or hosted service. It valid
 
 ## Status
 
-Pre-release alpha. The core `check` command works for `.sql` query files, user-provided Postgres URLs, optional schema SQL files, JSON output, and GitHub Actions annotations.
+Pre-release alpha. The core `check` command works for `.sql` query files, user-provided Postgres URLs, optional schema SQL files, query manifest v0.2, JSON output, and GitHub Actions annotations.
 
 The project is useful for early adopters, but command flags and report fields may still change before a stable release.
 
@@ -123,6 +123,29 @@ queries:
 
 `check` automatically loads `pg-contract.yaml` from the current directory when it exists. Use `--config path/to/file.yaml` for an explicit path, or `--no-config` to disable config loading.
 
+For larger repositories, use manifest v0.2 to put query roots and schema files in config:
+
+```yaml
+version: "0.2"
+
+query_sets:
+  - name: app
+    queries:
+      - ./queries
+    schema:
+      before:
+        - ./schema-before.sql
+      after:
+        - ./schema-after.sql
+```
+
+```sh
+pg-contract check \
+  --before-url "$PG_CONTRACT_BEFORE_URL" \
+  --after-url "$PG_CONTRACT_AFTER_URL" \
+  --config pg-contract.yaml
+```
+
 See [Configuration](docs/CONFIGURATION.md) for details.
 
 ## Output Formats
@@ -182,10 +205,10 @@ Near-term:
 - Improve diagnostics for more Postgres SQLSTATEs.
 - Add PR-focused documentation for common CI setups.
 - Add focused fixtures for result-shape limitations and additional SQLSTATEs.
+- Add query-set and tag filtering for manifest workflows.
 
 Later:
 
-- Better query manifests for larger repositories.
 - Optional query extraction adapters.
 - Richer GitHub PR summaries.
 - Package manager distribution once the release shape is stable.
@@ -220,6 +243,7 @@ make example-function-signature
 make example-enum-value
 make example-search-path
 make example-typed-params
+make example-manifest-v02
 make example-basic FORMAT=json
 ```
 
@@ -251,7 +275,7 @@ Out of scope:
 - [Environment](docs/ENVIRONMENT.md)
 - [Configuration](docs/CONFIGURATION.md)
 - [Diagnostics](docs/DIAGNOSTICS.md)
-- [Query manifest v0.2 design](docs/QUERY_MANIFEST_V02.md)
+- [Query manifest v0.2](docs/QUERY_MANIFEST_V02.md)
 - [GitHub Actions](docs/GITHUB_ACTIONS.md)
 - [Releasing](docs/RELEASING.md)
 - [Reference analysis](docs/REFERENCE_ANALYSIS.md)

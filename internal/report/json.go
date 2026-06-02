@@ -22,10 +22,12 @@ type JSONSummary struct {
 }
 
 type JSONResult struct {
-	Query  JSONQuery   `json:"query"`
-	Status string      `json:"status"`
-	Before JSONOutcome `json:"before"`
-	After  JSONOutcome `json:"after"`
+	QuerySet string      `json:"query_set,omitempty"`
+	Tags     []string    `json:"tags,omitempty"`
+	Query    JSONQuery   `json:"query"`
+	Status   string      `json:"status"`
+	Before   JSONOutcome `json:"before"`
+	After    JSONOutcome `json:"after"`
 }
 
 type JSONQuery struct {
@@ -102,6 +104,8 @@ func newJSONResult(result check.Result) JSONResult {
 	}
 
 	return JSONResult{
+		QuerySet: result.QuerySet,
+		Tags:     result.Tags,
 		Query: JSONQuery{
 			Name: result.Query.Name,
 			File: result.Query.File,

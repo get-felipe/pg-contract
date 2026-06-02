@@ -6,7 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-No unreleased changes yet.
+### Added
+
+- Query manifest v0.2 support for `query_sets`, multiple query roots, per-set schema files, `search_path`, tags, and optional JSON manifest metadata.
 
 ## [0.1.0-alpha.3] - 2026-06-02
 

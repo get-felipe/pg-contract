@@ -27,9 +27,11 @@ type Report struct {
 }
 
 type Result struct {
-	Query  query.Query
-	Before Outcome
-	After  Outcome
+	QuerySet string
+	Tags     []string
+	Query    query.Query
+	Before   Outcome
+	After    Outcome
 }
 
 type Outcome struct {
@@ -141,6 +143,15 @@ func Run(ctx context.Context, opts Options) (*Report, error) {
 	if strings.TrimSpace(opts.AfterURL) == "" {
 		return nil, fmt.Errorf("missing required --after-url")
 	}
+
+	cfg, err := config.Load(opts.ConfigPath)
+	if err != nil {
+		return nil, err
+	}
+	if cfg.IsManifest() {
+		return runManifest(ctx, opts, cfg)
+	}
+
 	if strings.TrimSpace(opts.QueriesPath) == "" {
 		return nil, fmt.Errorf("missing required --queries")
 	}
@@ -149,10 +160,6 @@ func Run(ctx context.Context, opts Options) (*Report, error) {
 	}
 
 	queries, err := query.LoadDir(opts.QueriesPath)
-	if err != nil {
-		return nil, err
-	}
-	cfg, err := config.Load(opts.ConfigPath)
 	if err != nil {
 		return nil, err
 	}
@@ -191,6 +198,92 @@ func Run(ctx context.Context, opts Options) (*Report, error) {
 	return report, nil
 }
 
+func runManifest(ctx context.Context, opts Options, cfg *config.Config) (*Report, error) {
+	if strings.TrimSpace(opts.QueriesPath) != "" {
+		return nil, fmt.Errorf("--queries cannot be used with config version 0.2 query_sets")
+	}
+	if strings.TrimSpace(opts.SchemaBefore) != "" || strings.TrimSpace(opts.SchemaAfter) != "" {
+		return nil, fmt.Errorf("--schema-before/--schema-after cannot be used with config version 0.2 query_sets")
+	}
+	if opts.BeforeURL == opts.AfterURL && manifestHasSchema(cfg) {
+		return nil, fmt.Errorf("query_sets schema files require distinct --before-url and --after-url values")
+	}
+
+	loaded := make([]struct {
+		set     config.QuerySet
+		queries []query.Query
+	}, 0, len(cfg.QuerySets))
+	known := map[string]struct{}{}
+	filesByName := map[string]string{}
+	total := 0
+	for _, querySet := range cfg.QuerySets {
+		queries, err := query.LoadPaths(cfg.ResolvePaths([]string(querySet.Queries)))
+		if err != nil {
+			return nil, fmt.Errorf("load query set %q: %w", querySet.Name, err)
+		}
+		for _, q := range queries {
+			if previous, ok := filesByName[q.Name]; ok {
+				return nil, fmt.Errorf("duplicate query name %q in %s and %s", q.Name, previous, q.File)
+			}
+			filesByName[q.Name] = q.File
+			known[q.Name] = struct{}{}
+		}
+		total += len(queries)
+		loaded = append(loaded, struct {
+			set     config.QuerySet
+			queries []query.Query
+		}{set: querySet, queries: queries})
+	}
+
+	if err := cfg.ValidateQueryNames(known); err != nil {
+		return nil, err
+	}
+
+	beforeConn, err := pgx.Connect(ctx, opts.BeforeURL)
+	if err != nil {
+		return nil, fmt.Errorf("connect before database: %w", err)
+	}
+	defer beforeConn.Close(context.Background())
+
+	afterConn, err := pgx.Connect(ctx, opts.AfterURL)
+	if err != nil {
+		return nil, fmt.Errorf("connect after database: %w", err)
+	}
+	defer afterConn.Close(context.Background())
+
+	report := &Report{Results: make([]Result, 0, total)}
+	for setIndex, loadedSet := range loaded {
+		querySet := loadedSet.set
+		if err := applySchemaFiles(ctx, beforeConn, cfg.ResolvePaths([]string(querySet.Schema.Before))); err != nil {
+			return nil, fmt.Errorf("apply before schema for query set %q: %w", querySet.Name, err)
+		}
+		if err := applySchemaFiles(ctx, afterConn, cfg.ResolvePaths([]string(querySet.Schema.After))); err != nil {
+			return nil, fmt.Errorf("apply after schema for query set %q: %w", querySet.Name, err)
+		}
+
+		if err := configureSearchPath(ctx, beforeConn, cfg.SearchPath(querySet)); err != nil {
+			return nil, fmt.Errorf("configure before search_path for query set %q: %w", querySet.Name, err)
+		}
+		if err := configureSearchPath(ctx, afterConn, cfg.SearchPath(querySet)); err != nil {
+			return nil, fmt.Errorf("configure after search_path for query set %q: %w", querySet.Name, err)
+		}
+
+		for queryIndex, q := range loadedSet.queries {
+			result := Result{
+				QuerySet: querySet.Name,
+				Tags:     cfg.Tags(querySet, q.Name),
+				Query:    q,
+			}
+			params := cfg.Params(q.Name)
+			result.Before = prepareQuery(ctx, beforeConn, fmt.Sprintf("pg_contract_before_%d_%d", setIndex+1, queryIndex+1), q, params)
+			result.After = prepareQuery(ctx, afterConn, fmt.Sprintf("pg_contract_after_%d_%d", setIndex+1, queryIndex+1), q, params)
+			report.Results = append(report.Results, result)
+		}
+	}
+
+	return report, nil
+}
+
 func queryNames(queries []query.Query) map[string]struct{} {
 	names := make(map[string]struct{}, len(queries))
 	for _, q := range queries {
@@ -217,6 +310,43 @@ func applySchema(ctx context.Context, conn *pgx.Conn, path string) error {
 	}
 
 	return nil
+}
+
+func applySchemaFiles(ctx context.Context, conn *pgx.Conn, paths []string) error {
+	for _, path := range paths {
+		if err := applySchema(ctx, conn, path); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func configureSearchPath(ctx context.Context, conn *pgx.Conn, searchPath []string) error {
+	if _, err := conn.Exec(ctx, "reset search_path"); err != nil {
+		return pgError(err)
+	}
+	if len(searchPath) == 0 {
+		return nil
+	}
+
+	_, err := conn.Exec(ctx, "select set_config('search_path', $1, false)", strings.Join(searchPath, ", "))
+	if err != nil {
+		return pgError(err)
+	}
+	return nil
+}
+
+func manifestHasSchema(cfg *config.Config) bool {
+	if cfg == nil {
+		return false
+	}
+
+	for _, querySet := range cfg.QuerySets {
+		if len(querySet.Schema.Before) > 0 || len(querySet.Schema.After) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func prepareQuery(ctx context.Context, conn *pgx.Conn, preparedName string, q query.Query, params []string) Outcome {

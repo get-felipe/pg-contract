@@ -7,7 +7,7 @@ EXPECTED_EXIT ?= 1
 GORELEASER_REMOTE_URL ?= https://github.com/get-felipe/pg-contract.git
 GORELEASER_GIT_CONFIG = GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=remote.origin.url GIT_CONFIG_VALUE_0=$(GORELEASER_REMOTE_URL) GIT_CONFIG_KEY_1=remote.origin.fetch GIT_CONFIG_VALUE_1=+refs/heads/*:refs/remotes/origin/*
 
-.PHONY: build check example example-ambiguous-column example-basic example-enum-value example-function-signature example-init example-missing-table example-search-path example-typed-params example-view-changed fmt release-check release-snapshot test test-integration tidy
+.PHONY: build check example example-ambiguous-column example-basic example-enum-value example-function-signature example-init example-manifest-v02 example-missing-table example-search-path example-typed-params example-view-changed fmt release-check release-snapshot test test-integration tidy
 
 build:
 	@go build -o bin/pg-contract ./cmd/pg-contract
@@ -75,6 +75,25 @@ example-typed-params: example
 
 example-init: build
 	@./bin/pg-contract init --queries examples/basic/queries --out -
+
+example-manifest-v02: build
+	@test -n "$(PG_CONTRACT_BEFORE_URL)" || (echo "PG_CONTRACT_BEFORE_URL is required"; exit 2)
+	@test -n "$(PG_CONTRACT_AFTER_URL)" || (echo "PG_CONTRACT_AFTER_URL is required"; exit 2)
+	@code=0; \
+	./bin/pg-contract check \
+		--before-url "$(PG_CONTRACT_BEFORE_URL)" \
+		--after-url "$(PG_CONTRACT_AFTER_URL)" \
+		--config examples/manifest-v02/pg-contract.yaml \
+		--format "$(FORMAT)" || code=$$?; \
+	if [ "$$code" -eq "$(EXPECTED_EXIT)" ]; then \
+		if [ "$(FORMAT)" = "text" ]; then \
+			echo "Manifest v0.2 example produced the expected exit code $(EXPECTED_EXIT)."; \
+		fi; \
+		exit 0; \
+	fi; \
+	echo "Manifest v0.2 example produced exit code $$code; expected $(EXPECTED_EXIT)."; \
+	if [ "$$code" -eq 0 ]; then exit 1; fi; \
+	exit "$$code"
 
 fmt:
 	go fmt ./...

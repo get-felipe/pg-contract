@@ -43,6 +43,50 @@ func TestRunVersion(t *testing.T) {
 	}
 }
 
+func TestRunVersionUsesInjectedVersion(t *testing.T) {
+	original := Version
+	Version = "1.2.3-test"
+	t.Cleanup(func() {
+		Version = original
+	})
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	code := Run([]string{"version"}, &stdout, &stderr)
+
+	if code != 0 {
+		t.Fatalf("expected exit code 0, got %d", code)
+	}
+	if got := strings.TrimSpace(stdout.String()); got != "pg-contract 1.2.3-test" {
+		t.Fatalf("expected injected version, got %q", got)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got %q", stderr.String())
+	}
+}
+
+func TestNormalizeBuildVersion(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{name: "empty", in: "", want: ""},
+		{name: "devel", in: "(devel)", want: ""},
+		{name: "module tag", in: "v0.1.0-alpha.2", want: "0.1.0-alpha.2"},
+		{name: "plain version", in: "0.1.0-alpha.2", want: "0.1.0-alpha.2"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := normalizeBuildVersion(tt.in); got != tt.want {
+				t.Fatalf("normalizeBuildVersion(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestRunCheckMissingFlags(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer

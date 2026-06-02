@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime/debug"
+	"strings"
 	"time"
 
 	"github.com/get-felipe/pg-contract/internal/check"
@@ -16,8 +18,9 @@ import (
 )
 
 const defaultConfigPath = "pg-contract.yaml"
+const devVersion = "0.0.0-dev"
 
-var Version = "0.0.0-dev"
+var Version = devVersion
 
 const usage = `pg-contract validates whether existing application SQL still works after a Postgres schema change.
 
@@ -35,7 +38,7 @@ func Run(args []string, stdout io.Writer, stderr io.Writer) int {
 
 	switch args[0] {
 	case "version", "--version":
-		fmt.Fprintf(stdout, "pg-contract %s\n", Version)
+		fmt.Fprintf(stdout, "pg-contract %s\n", resolvedVersion())
 		return 0
 	case "check":
 		return runCheck(args[1:], stdout, stderr)
@@ -45,6 +48,27 @@ func Run(args []string, stdout io.Writer, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "unknown command %q\n\n", args[0])
 		fmt.Fprint(stderr, usage)
 		return 2
+	}
+}
+
+func resolvedVersion() string {
+	if Version != "" && Version != devVersion {
+		return Version
+	}
+	if info, ok := debug.ReadBuildInfo(); ok {
+		if version := normalizeBuildVersion(info.Main.Version); version != "" {
+			return version
+		}
+	}
+	return Version
+}
+
+func normalizeBuildVersion(version string) string {
+	switch version {
+	case "", "(devel)":
+		return ""
+	default:
+		return strings.TrimPrefix(version, "v")
 	}
 }
 

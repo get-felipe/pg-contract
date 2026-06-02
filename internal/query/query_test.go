@@ -82,3 +82,72 @@ func TestLoadDirRejectsDuplicateNames(t *testing.T) {
 		t.Fatal("expected duplicate query name error")
 	}
 }
+
+func TestLoadPathsAcceptsSQLFilesAndDirectories(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "queries")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "find.sql"), []byte("-- name: customers.find\nselect 1;\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(root, "count.sql")
+	if err := os.WriteFile(file, []byte("-- name: reporting.count\nselect 2;\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	queries, err := LoadPaths([]string{dir, file})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(queries) != 2 {
+		t.Fatalf("expected 2 queries, got %d", len(queries))
+	}
+	if queries[0].Name != "reporting.count" {
+		t.Fatalf("expected sorted file query first, got %q", queries[0].Name)
+	}
+	if queries[1].Name != "customers.find" {
+		t.Fatalf("expected directory query second, got %q", queries[1].Name)
+	}
+}
+
+func TestLoadPathsUsesFileBaseNameFallback(t *testing.T) {
+	root := t.TempDir()
+	file := filepath.Join(root, "count_tags.sql")
+	if err := os.WriteFile(file, []byte("select 1;\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	queries, err := LoadPaths([]string{file})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got := queries[0].Name; got != "count_tags" {
+		t.Fatalf("expected file basename fallback, got %q", got)
+	}
+}
+
+func TestLoadPathsRejectsDuplicateNamesAcrossRoots(t *testing.T) {
+	root := t.TempDir()
+	left := filepath.Join(root, "left")
+	right := filepath.Join(root, "right")
+	if err := os.MkdirAll(left, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(right, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(left, "a.sql"), []byte("-- name: duplicate\nselect 1;\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(right, "b.sql"), []byte("-- name: duplicate\nselect 2;\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := LoadPaths([]string{left, right}); err == nil {
+		t.Fatal("expected duplicate query name error")
+	}
+}

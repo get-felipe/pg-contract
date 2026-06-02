@@ -1,8 +1,8 @@
-# Query Manifest v0.2 Design
+# Query Manifest v0.2
 
-Status: proposed
+Status: implemented in alpha
 
-This document sketches the next `pg-contract.yaml` shape before expanding the CLI surface area. It is a design target, not yet the implemented config parser.
+This document records the `pg-contract.yaml` v0.2 manifest shape and the design constraints behind it.
 
 ## Goals
 
@@ -72,14 +72,16 @@ queries:
 | `defaults.prepare.search_path` | No | Search path to apply before preparing queries unless a query set overrides it. |
 | `query_sets` | Yes for v0.2 | Ordered list of query groups to validate. |
 | `query_sets[].name` | Yes | Stable query set identifier for output and selection. |
-| `query_sets[].queries` | Yes | One or more SQL files or directories. Directories are scanned recursively for `.sql` files. |
-| `query_sets[].schema.before` | No | Optional SQL files applied to the before database for this set. |
-| `query_sets[].schema.after` | No | Optional SQL files applied to the after database for this set. |
+| `query_sets[].queries` | Yes | One or more SQL files or directories. Directories are scanned recursively for `.sql` files. Accepts a string or list of strings. |
+| `query_sets[].schema.before` | No | Optional SQL files applied to the before database for this set. Accepts a string or list of strings. |
+| `query_sets[].schema.after` | No | Optional SQL files applied to the after database for this set. Accepts a string or list of strings. |
 | `query_sets[].prepare.search_path` | No | Per-set search path override. |
 | `query_sets[].tags` | No | Labels for filtering, reporting, or ownership. Tags do not affect SQL semantics. |
 | `queries` | No | Per-query overrides keyed by sqlc-style query name. |
 | `queries.<name>.params` | No | Ordered Postgres parameter types for `$1`, `$2`, and so on. |
 | `queries.<name>.tags` | No | Per-query labels merged with query set tags. |
+
+Schema files are applied in query set order to the supplied before and after databases. Those databases should be disposable for the check.
 
 ## Query Identity
 
@@ -143,7 +145,7 @@ queries:
       - text[]
 ```
 
-`pg-contract init` should keep generating the alpha-compatible shape until the v0.2 parser and CLI flags are implemented. A later release can add an explicit opt-in such as `pg-contract init --manifest-version 0.2`.
+`pg-contract init` still generates the alpha-compatible shape. A later release can add an explicit opt-in such as `pg-contract init --manifest-version 0.2`.
 
 ## Output Stability
 
@@ -156,7 +158,7 @@ Existing JSON and GitHub output fields should remain stable:
 - reason
 - suggestion
 
-v0.2 may add optional fields such as `query_set` and `tags`, but existing fields should not be renamed or removed in the same change.
+v0.2 adds optional `query_set` and `tags` fields for manifest results, but existing fields are not renamed or removed.
 
 ## Rejected Alternatives
 
@@ -180,9 +182,10 @@ Environment blocks are useful in mature tools, but v0.2 should first solve query
 
 Multiple files would reduce merge conflicts in large repositories, but they make discovery, validation, and CI usage less obvious. A single manifest with multiple `query_sets` is easier to reason about for v0.2.
 
-## Open Implementation Notes
+## Implementation Decisions
 
-- Decide whether `--queries` and `--schema-*` can be mixed with `query_sets`, or whether they should be mutually exclusive with v0.2 manifest mode.
-- Decide whether the CLI needs `--query-set` selection in the first implementation.
-- Decide whether tags are only metadata at first or also usable as a filter.
-- Preserve strict YAML decoding so typos fail early.
+- `--queries`, `--schema-before`, and `--schema-after` are mutually exclusive with v0.2 `query_sets`. In manifest mode, query sets own query and schema inputs.
+- `--query-set` selection is not implemented in the first v0.2 parser. All query sets run in manifest order.
+- Tags are metadata only in the first implementation. They appear in JSON results but are not filters.
+- Manifest paths are resolved relative to the manifest file.
+- Strict YAML decoding is preserved so typos fail early.

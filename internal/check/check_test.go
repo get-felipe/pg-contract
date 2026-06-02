@@ -200,6 +200,173 @@ select array_length($1, 1) as tag_count;
 	}
 }
 
+func TestRunManifestRejectsCLIQueryInputs(t *testing.T) {
+	root := t.TempDir()
+	queriesDir := filepath.Join(root, "queries")
+	if err := os.MkdirAll(queriesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	configFile := filepath.Join(root, "pg-contract.yaml")
+	if err := os.WriteFile(configFile, []byte(`version: "0.2"
+query_sets:
+  - name: app
+    queries: queries
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	_, err := Run(ctx, Options{
+		BeforeURL:   "postgres://%zz",
+		AfterURL:    "postgres://%zz",
+		QueriesPath: queriesDir,
+		ConfigPath:  configFile,
+	})
+	if err == nil || !strings.Contains(err.Error(), "--queries cannot be used with config version 0.2") {
+		t.Fatalf("expected manifest/queries conflict before connecting, got %v", err)
+	}
+}
+
+func TestRunManifestDetectsDuplicateNamesBeforeConnecting(t *testing.T) {
+	root := t.TempDir()
+	left := filepath.Join(root, "left")
+	right := filepath.Join(root, "right")
+	if err := os.MkdirAll(left, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(right, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(left, "find.sql"), []byte("-- name: duplicate\nselect 1;\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(right, "find.sql"), []byte("-- name: duplicate\nselect 2;\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	configFile := filepath.Join(root, "pg-contract.yaml")
+	if err := os.WriteFile(configFile, []byte(`version: "0.2"
+query_sets:
+  - name: app
+    queries:
+      - left
+      - right
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	_, err := Run(ctx, Options{
+		BeforeURL:  "postgres://%zz",
+		AfterURL:   "postgres://%zz",
+		ConfigPath: configFile,
+	})
+	if err == nil || !strings.Contains(err.Error(), "duplicate query name") {
+		t.Fatalf("expected duplicate query name before connecting, got %v", err)
+	}
+}
+
+func TestRunWithPostgresManifest(t *testing.T) {
+	beforeURL := os.Getenv("PG_CONTRACT_TEST_BEFORE_URL")
+	afterURL := os.Getenv("PG_CONTRACT_TEST_AFTER_URL")
+	if beforeURL == "" || afterURL == "" {
+		t.Skip("set PG_CONTRACT_TEST_BEFORE_URL and PG_CONTRACT_TEST_AFTER_URL to run integration test")
+	}
+	if beforeURL == afterURL {
+		t.Skip("integration test requires separate before and after databases")
+	}
+
+	root := t.TempDir()
+	queriesDir := filepath.Join(root, "queries")
+	if err := os.MkdirAll(queriesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	schemaName := fmt.Sprintf("contract_it_%d", time.Now().UnixNano())
+	beforeSchema := filepath.Join(root, "before.sql")
+	afterSchema := filepath.Join(root, "after.sql")
+	queryFile := filepath.Join(queriesDir, "find_customer.sql")
+	configFile := filepath.Join(root, "pg-contract.yaml")
+	defer dropIntegrationSchema(t, beforeURL, schemaName)
+	defer dropIntegrationSchema(t, afterURL, schemaName)
+
+	if err := os.WriteFile(beforeSchema, []byte(fmt.Sprintf(`
+drop schema if exists %[1]s cascade;
+create schema %[1]s;
+create table %[1]s.customers (
+  id uuid primary key,
+  email text not null
+);
+`, schemaName)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(afterSchema, []byte(fmt.Sprintf(`
+drop schema if exists %[1]s cascade;
+create schema %[1]s;
+create table %[1]s.customers (
+  id uuid primary key
+);
+`, schemaName)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(queryFile, []byte(`-- name: customers.find
+select id, email
+from customers
+where id = $1;
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configFile, []byte(fmt.Sprintf(`version: "0.2"
+query_sets:
+  - name: app
+    queries: queries
+    schema:
+      before: before.sql
+      after: after.sql
+    prepare:
+      search_path:
+        - %[1]s
+        - public
+    tags:
+      - app
+queries:
+  customers.find:
+    tags:
+      - customer-facing
+`, schemaName)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	report, err := Run(ctx, Options{
+		BeforeURL:  beforeURL,
+		AfterURL:   afterURL,
+		ConfigPath: configFile,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	breaking := report.Breaking()
+	if len(breaking) != 1 {
+		t.Fatalf("expected 1 breaking query, got %d", len(breaking))
+	}
+	if breaking[0].QuerySet != "app" {
+		t.Fatalf("expected query set app, got %q", breaking[0].QuerySet)
+	}
+	if len(breaking[0].Tags) != 2 || breaking[0].Tags[0] != "app" || breaking[0].Tags[1] != "customer-facing" {
+		t.Fatalf("unexpected tags: %#v", breaking[0].Tags)
+	}
+	if breaking[0].After.Error == nil || breaking[0].After.Error.Code != "42703" {
+		t.Fatalf("expected undefined_column 42703, got %#v", breaking[0].After.Error)
+	}
+}
+
 func TestRunWithPostgresExampleFixtures(t *testing.T) {
 	beforeURL := os.Getenv("PG_CONTRACT_TEST_BEFORE_URL")
 	afterURL := os.Getenv("PG_CONTRACT_TEST_AFTER_URL")
@@ -265,6 +432,25 @@ func TestRunWithPostgresExampleFixtures(t *testing.T) {
 				t.Fatalf("expected SQLSTATE %s, got %#v", test.sqlstate, breaking[0].After.Error)
 			}
 		})
+	}
+}
+
+func dropIntegrationSchema(t *testing.T, url string, schema string) {
+	t.Helper()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	conn, err := pgx.Connect(ctx, url)
+	if err != nil {
+		t.Logf("cleanup connect failed: %v", err)
+		return
+	}
+	defer conn.Close(context.Background())
+
+	_, err = conn.Exec(ctx, fmt.Sprintf("drop schema if exists %s cascade", schema))
+	if err != nil {
+		t.Logf("cleanup drop schema failed: %v", err)
 	}
 }
 

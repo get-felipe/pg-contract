@@ -54,6 +54,21 @@ jobs:
           echo "::error title=pg-contract self-test::breaking-change example should fail the action"
           exit 1
 
+      - name: Run manifest v0.2 breaking-change example
+        id: manifest
+        uses: ./
+        continue-on-error: true
+        with:
+          before-url: postgres://postgres:postgres@localhost:${{ job.services.postgres.ports['5432'] }}/pg_contract_before?sslmode=disable
+          after-url: postgres://postgres:postgres@localhost:${{ job.services.postgres.ports['5432'] }}/pg_contract_after?sslmode=disable
+          config: examples/manifest-v02/pg-contract.yaml
+
+      - name: Assert manifest v0.2 example failed
+        if: steps.manifest.outcome != 'failure'
+        run: |
+          echo "::error title=pg-contract self-test::manifest v0.2 example should fail the action"
+          exit 1
+
       - name: Run compatible typed-params example
         uses: ./
         with:

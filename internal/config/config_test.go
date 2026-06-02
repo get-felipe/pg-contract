@@ -50,6 +50,161 @@ queries:
 	}
 }
 
+func TestLoadManifestV02(t *testing.T) {
+	path := writeConfig(t, `
+version: "0.2"
+defaults:
+  prepare:
+    search_path:
+      - public
+query_sets:
+  - name: app
+    queries:
+      - queries
+      - more.sql
+    schema:
+      before:
+        - before.sql
+      after: after.sql
+    tags:
+      - ci
+queries:
+  customers.find:
+    params:
+      - uuid
+    tags:
+      - customer-facing
+`)
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !cfg.IsManifest() {
+		t.Fatal("expected v0.2 manifest")
+	}
+	if len(cfg.QuerySets) != 1 {
+		t.Fatalf("expected 1 query set, got %d", len(cfg.QuerySets))
+	}
+	set := cfg.QuerySets[0]
+	if set.Name != "app" {
+		t.Fatalf("expected query set app, got %q", set.Name)
+	}
+	if got := cfg.ResolvePath(set.Queries[0]); got != filepath.Join(filepath.Dir(path), "queries") {
+		t.Fatalf("expected query path relative to manifest, got %q", got)
+	}
+	if got := cfg.ResolvePath(set.Schema.After[0]); got != filepath.Join(filepath.Dir(path), "after.sql") {
+		t.Fatalf("expected schema path relative to manifest, got %q", got)
+	}
+	if params := cfg.Params("customers.find"); len(params) != 1 || params[0] != "uuid" {
+		t.Fatalf("unexpected params: %#v", params)
+	}
+	tags := cfg.Tags(set, "customers.find")
+	if len(tags) != 2 || tags[0] != "ci" || tags[1] != "customer-facing" {
+		t.Fatalf("unexpected tags: %#v", tags)
+	}
+	searchPath := cfg.SearchPath(set)
+	if len(searchPath) != 1 || searchPath[0] != "public" {
+		t.Fatalf("unexpected search path: %#v", searchPath)
+	}
+}
+
+func TestLoadManifestV02AcceptsSingleQueryPath(t *testing.T) {
+	path := writeConfig(t, `
+version: "0.2"
+query_sets:
+  - name: app
+    queries: queries
+`)
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got := []string(cfg.QuerySets[0].Queries); len(got) != 1 || got[0] != "queries" {
+		t.Fatalf("unexpected query paths: %#v", got)
+	}
+}
+
+func TestLoadManifestV02PerSetSearchPathOverridesDefault(t *testing.T) {
+	path := writeConfig(t, `
+version: "0.2"
+defaults:
+  prepare:
+    search_path:
+      - public
+query_sets:
+  - name: reporting
+    queries: queries
+    prepare:
+      search_path:
+        - reporting
+        - public
+`)
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	searchPath := cfg.SearchPath(cfg.QuerySets[0])
+	if len(searchPath) != 2 || searchPath[0] != "reporting" || searchPath[1] != "public" {
+		t.Fatalf("unexpected search path: %#v", searchPath)
+	}
+}
+
+func TestLoadManifestV02RejectsMissingQuerySets(t *testing.T) {
+	path := writeConfig(t, `
+version: "0.2"
+`)
+
+	if _, err := Load(path); err == nil {
+		t.Fatal("expected missing query_sets error")
+	}
+}
+
+func TestLoadManifestV02RejectsDuplicateQuerySetNames(t *testing.T) {
+	path := writeConfig(t, `
+version: "0.2"
+query_sets:
+  - name: app
+    queries: queries
+  - name: app
+    queries: more
+`)
+
+	if _, err := Load(path); err == nil {
+		t.Fatal("expected duplicate query set error")
+	}
+}
+
+func TestLoadManifestV02RejectsUnsupportedVersion(t *testing.T) {
+	path := writeConfig(t, `
+version: "0.3"
+query_sets:
+  - name: app
+    queries: queries
+`)
+
+	if _, err := Load(path); err == nil {
+		t.Fatal("expected unsupported version error")
+	}
+}
+
+func TestLoadConfigRejectsQuerySetsWithoutVersion(t *testing.T) {
+	path := writeConfig(t, `
+query_sets:
+  - name: app
+    queries: queries
+`)
+
+	if _, err := Load(path); err == nil {
+		t.Fatal("expected query_sets without version error")
+	}
+}
+
 func TestLoadConfigRejectsUnknownFields(t *testing.T) {
 	path := writeConfig(t, `
 queries:

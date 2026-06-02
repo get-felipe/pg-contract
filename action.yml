@@ -13,8 +13,9 @@ inputs:
     description: Postgres URL for the database containing the proposed/target schema.
     required: true
   queries:
-    description: Directory containing .sql query files to validate.
-    required: true
+    description: Directory containing .sql query files to validate. Optional when config points to a v0.2 manifest with query_sets.
+    required: false
+    default: ""
   schema-before:
     description: Optional SQL file to load into before-url before checking queries.
     required: false
@@ -78,10 +79,13 @@ runs:
           check
           --before-url "$PG_CONTRACT_BEFORE_URL"
           --after-url "$PG_CONTRACT_AFTER_URL"
-          --queries "$PG_CONTRACT_QUERIES"
           --format github
           --timeout "$PG_CONTRACT_TIMEOUT"
         )
+
+        if [ -n "$PG_CONTRACT_QUERIES" ]; then
+          args+=(--queries "$PG_CONTRACT_QUERIES")
+        fi
 
         if [ -n "$PG_CONTRACT_SCHEMA_BEFORE" ]; then
           args+=(--schema-before "$PG_CONTRACT_SCHEMA_BEFORE")

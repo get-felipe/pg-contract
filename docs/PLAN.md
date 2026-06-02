@@ -19,6 +19,7 @@ Build a narrow local CLI that proves the core compatibility check before adding 
 - [x] Add `init` command to generate starter config from query files.
 - [x] Auto-load `pg-contract.yaml` from the current directory, with `--no-config` opt-out.
 - [x] Design the query manifest v0.2 shape before expanding config and CLI behavior.
+- [x] Implement query manifest v0.2 parsing and execution for query sets, multiple query roots, per-set schema files, `search_path`, and tags.
 - [x] Classify high-value Postgres errors into clear reasons and suggested fixes.
 - [x] Add JSON reporter.
 - [x] Add text reporter with Postgres SQLSTATE, message, position, and structured object fields when available.

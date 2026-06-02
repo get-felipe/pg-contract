@@ -26,6 +26,7 @@ const usage = `pg-contract validates whether existing application SQL still work
 
 Usage:
   pg-contract check --before-url BEFORE --after-url AFTER --queries queries/
+  pg-contract check --before-url BEFORE --after-url AFTER --config pg-contract.yaml
   pg-contract init --queries queries/ --out pg-contract.yaml
   pg-contract version
 `
@@ -86,7 +87,7 @@ func runCheck(args []string, stdout io.Writer, stderr io.Writer) int {
 	flags.StringVar(&opts.AfterURL, "dsn-after", "", "alias for --after-url")
 	flags.StringVar(&opts.SchemaBefore, "schema-before", "", "optional SQL file to apply to the before database")
 	flags.StringVar(&opts.SchemaAfter, "schema-after", "", "optional SQL file to apply to the after database")
-	flags.StringVar(&opts.QueriesPath, "queries", "", "directory containing .sql query files")
+	flags.StringVar(&opts.QueriesPath, "queries", "", "directory containing .sql query files; optional with config version 0.2 query_sets")
 	flags.StringVar(&opts.ConfigPath, "config", "", "optional pg-contract YAML config file")
 	flags.BoolVar(&noConfig, "no-config", noConfig, "do not auto-load pg-contract.yaml")
 	flags.StringVar(&format, "format", format, "output format: text, json, or github")

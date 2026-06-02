@@ -19,6 +19,57 @@ type Query struct {
 }
 
 func LoadDir(root string) ([]Query, error) {
+	return LoadPaths([]string{root})
+}
+
+func LoadPaths(paths []string) ([]Query, error) {
+	if len(paths) == 0 {
+		return nil, fmt.Errorf("queries path is required")
+	}
+
+	var files []queryFile
+	for _, path := range paths {
+		collected, err := collectFiles(path)
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, collected...)
+	}
+
+	sort.Slice(files, func(i, j int) bool {
+		if files[i].path == files[j].path {
+			return files[i].root < files[j].root
+		}
+		return files[i].path < files[j].path
+	})
+
+	queries := make([]Query, 0, len(files))
+	seen := map[string]string{}
+	for _, file := range files {
+		q, err := loadFile(file.root, file.path)
+		if err != nil {
+			return nil, err
+		}
+		if previous, exists := seen[q.Name]; exists {
+			return nil, fmt.Errorf("duplicate query name %q in %s and %s", q.Name, previous, q.File)
+		}
+		seen[q.Name] = q.File
+		queries = append(queries, q)
+	}
+
+	if len(queries) == 0 {
+		return nil, fmt.Errorf("no .sql query files found in %s", strings.Join(paths, ", "))
+	}
+
+	return queries, nil
+}
+
+type queryFile struct {
+	root string
+	path string
+}
+
+func collectFiles(root string) ([]queryFile, error) {
 	if strings.TrimSpace(root) == "" {
 		return nil, fmt.Errorf("queries path is required")
 	}
@@ -28,7 +79,10 @@ func LoadDir(root string) ([]Query, error) {
 		return nil, fmt.Errorf("stat queries path: %w", err)
 	}
 	if !info.IsDir() {
-		return nil, fmt.Errorf("queries path must be a directory: %s", root)
+		if !strings.EqualFold(filepath.Ext(root), ".sql") {
+			return nil, fmt.Errorf("queries path must be a directory or .sql file: %s", root)
+		}
+		return []queryFile{{root: filepath.Dir(root), path: root}}, nil
 	}
 
 	var files []string
@@ -48,26 +102,11 @@ func LoadDir(root string) ([]Query, error) {
 	}
 
 	sort.Strings(files)
-
-	queries := make([]Query, 0, len(files))
-	seen := map[string]string{}
+	out := make([]queryFile, 0, len(files))
 	for _, file := range files {
-		q, err := loadFile(root, file)
-		if err != nil {
-			return nil, err
-		}
-		if previous, exists := seen[q.Name]; exists {
-			return nil, fmt.Errorf("duplicate query name %q in %s and %s", q.Name, previous, q.File)
-		}
-		seen[q.Name] = q.File
-		queries = append(queries, q)
+		out = append(out, queryFile{root: root, path: file})
 	}
-
-	if len(queries) == 0 {
-		return nil, fmt.Errorf("no .sql query files found in %s", root)
-	}
-
-	return queries, nil
+	return out, nil
 }
 
 func loadFile(root string, file string) (Query, error) {

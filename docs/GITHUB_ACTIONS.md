@@ -47,6 +47,7 @@ The action always uses GitHub annotation output. Breaking queries appear as work
 | `schema-after` | No | | Optional SQL file to load into `after-url` before checking. |
 | `config` | No | | Optional `pg-contract.yaml` path. |
 | `no-config` | No | `false` | Set to `true` to disable automatic config loading. |
+| `query-set` | No | | Manifest v0.2 query set name. Use one query set per line for multiple focused sets. |
 | `timeout` | No | `30s` | Per-connection timeout. |
 
 The command auto-loads `pg-contract.yaml` from the workflow working directory. Set `config` if the file lives elsewhere, or set `no-config: true` if the workflow should ignore it.
@@ -60,6 +61,20 @@ When `config` points to a manifest v0.2 file with `query_sets`, omit `queries`, 
     before-url: ${{ secrets.PG_CONTRACT_BEFORE_URL }}
     after-url: ${{ secrets.PG_CONTRACT_AFTER_URL }}
     config: pg-contract.yaml
+```
+
+For focused manifest checks, add `query-set`. Multiple sets can be passed with a multi-line value:
+
+```yaml
+- name: Check selected query sets
+  uses: get-felipe/pg-contract@v0.1.0-alpha.4
+  with:
+    before-url: ${{ secrets.PG_CONTRACT_BEFORE_URL }}
+    after-url: ${{ secrets.PG_CONTRACT_AFTER_URL }}
+    config: pg-contract.yaml
+    query-set: |
+      app
+      reporting
 ```
 
 Generate a starter config locally with:

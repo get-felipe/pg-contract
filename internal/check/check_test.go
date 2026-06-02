@@ -229,6 +229,95 @@ query_sets:
 	}
 }
 
+func TestRunRejectsQuerySetSelectionOutsideManifest(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	_, err := Run(ctx, Options{
+		BeforeURL: "postgres://%zz",
+		AfterURL:  "postgres://%zz",
+		QuerySets: []string{"app"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "--query-set requires config version 0.2") {
+		t.Fatalf("expected query-set manifest requirement before legacy validation, got %v", err)
+	}
+}
+
+func TestRunManifestRejectsUnknownQuerySetBeforeConnecting(t *testing.T) {
+	root := t.TempDir()
+	queriesDir := filepath.Join(root, "queries")
+	if err := os.MkdirAll(queriesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(queriesDir, "find.sql"), []byte("-- name: customers.find\nselect 1;\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	configFile := filepath.Join(root, "pg-contract.yaml")
+	if err := os.WriteFile(configFile, []byte(`version: "0.2"
+query_sets:
+  - name: app
+    queries: queries
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	_, err := Run(ctx, Options{
+		BeforeURL:  "postgres://%zz",
+		AfterURL:   "postgres://%zz",
+		ConfigPath: configFile,
+		QuerySets:  []string{"reporting"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "unknown query set \"reporting\"") {
+		t.Fatalf("expected unknown query set before connecting, got %v", err)
+	}
+}
+
+func TestRunManifestSkipsUnselectedQuerySetsBeforeConnecting(t *testing.T) {
+	root := t.TempDir()
+	queriesDir := filepath.Join(root, "queries")
+	if err := os.MkdirAll(queriesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(queriesDir, "find.sql"), []byte("-- name: customers.find\nselect 1;\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	configFile := filepath.Join(root, "pg-contract.yaml")
+	if err := os.WriteFile(configFile, []byte(`version: "0.2"
+query_sets:
+  - name: app
+    queries: queries
+  - name: reporting
+    queries: missing-reporting-dir
+queries:
+  reporting.list:
+    params: []
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	_, err := Run(ctx, Options{
+		BeforeURL:  "postgres://%zz",
+		AfterURL:   "postgres://%zz",
+		ConfigPath: configFile,
+		QuerySets:  []string{"app"},
+	})
+	if err == nil {
+		t.Fatal("expected connection failure after loading only the selected query set")
+	}
+	if strings.Contains(err.Error(), "missing-reporting-dir") {
+		t.Fatalf("expected unselected query set to be skipped, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "connect before database") {
+		t.Fatalf("expected connection failure after selected query loading, got %v", err)
+	}
+}
+
 func TestRunManifestDetectsDuplicateNamesBeforeConnecting(t *testing.T) {
 	root := t.TempDir()
 	left := filepath.Join(root, "left")

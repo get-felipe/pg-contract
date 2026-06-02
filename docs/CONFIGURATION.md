@@ -136,6 +136,19 @@ pg-contract check \
   --config pg-contract.yaml
 ```
 
+Use repeatable `--query-set` flags for focused checks:
+
+```sh
+pg-contract check \
+  --before-url "$PG_CONTRACT_BEFORE_URL" \
+  --after-url "$PG_CONTRACT_AFTER_URL" \
+  --config pg-contract.yaml \
+  --query-set app \
+  --query-set reporting
+```
+
+When `--query-set` is provided, only matching query sets are loaded and checked. Unknown names fail before connecting to Postgres. Selected sets still run in manifest order. Run without `--query-set` to validate every query path and per-query override in the manifest.
+
 Manifest paths are resolved relative to the manifest file. For example, if `--config config/pg-contract.yaml` contains `queries: queries`, `pg-contract` loads `config/queries`.
 
 In v0.2 mode, `query_sets` define query and schema inputs. Do not mix v0.2 manifests with CLI `--queries`, `--schema-before`, or `--schema-after`.

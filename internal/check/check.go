@@ -20,6 +20,7 @@ type Options struct {
 	SchemaAfter  string
 	QueriesPath  string
 	ConfigPath   string
+	QuerySets    []string
 }
 
 type Report struct {
@@ -152,6 +153,9 @@ func Run(ctx context.Context, opts Options) (*Report, error) {
 		return runManifest(ctx, opts, cfg)
 	}
 
+	if len(opts.QuerySets) > 0 {
+		return nil, fmt.Errorf("--query-set requires config version 0.2 query_sets")
+	}
 	if strings.TrimSpace(opts.QueriesPath) == "" {
 		return nil, fmt.Errorf("missing required --queries")
 	}
@@ -205,18 +209,23 @@ func runManifest(ctx context.Context, opts Options, cfg *config.Config) (*Report
 	if strings.TrimSpace(opts.SchemaBefore) != "" || strings.TrimSpace(opts.SchemaAfter) != "" {
 		return nil, fmt.Errorf("--schema-before/--schema-after cannot be used with config version 0.2 query_sets")
 	}
-	if opts.BeforeURL == opts.AfterURL && manifestHasSchema(cfg) {
+
+	querySets, err := selectQuerySets(cfg.QuerySets, opts.QuerySets)
+	if err != nil {
+		return nil, err
+	}
+	if opts.BeforeURL == opts.AfterURL && querySetsHaveSchema(querySets) {
 		return nil, fmt.Errorf("query_sets schema files require distinct --before-url and --after-url values")
 	}
 
 	loaded := make([]struct {
 		set     config.QuerySet
 		queries []query.Query
-	}, 0, len(cfg.QuerySets))
+	}, 0, len(querySets))
 	known := map[string]struct{}{}
 	filesByName := map[string]string{}
 	total := 0
-	for _, querySet := range cfg.QuerySets {
+	for _, querySet := range querySets {
 		queries, err := query.LoadPaths(cfg.ResolvePaths([]string(querySet.Queries)))
 		if err != nil {
 			return nil, fmt.Errorf("load query set %q: %w", querySet.Name, err)
@@ -235,8 +244,10 @@ func runManifest(ctx context.Context, opts Options, cfg *config.Config) (*Report
 		}{set: querySet, queries: queries})
 	}
 
-	if err := cfg.ValidateQueryNames(known); err != nil {
-		return nil, err
+	if len(opts.QuerySets) == 0 {
+		if err := cfg.ValidateQueryNames(known); err != nil {
+			return nil, err
+		}
 	}
 
 	beforeConn, err := pgx.Connect(ctx, opts.BeforeURL)
@@ -282,6 +293,44 @@ func runManifest(ctx context.Context, opts Options, cfg *config.Config) (*Report
 	}
 
 	return report, nil
+}
+
+func selectQuerySets(querySets []config.QuerySet, selectors []string) ([]config.QuerySet, error) {
+	if len(selectors) == 0 {
+		return querySets, nil
+	}
+
+	selected := map[string]struct{}{}
+	selectedOrder := make([]string, 0, len(selectors))
+	for _, selector := range selectors {
+		name := strings.TrimSpace(selector)
+		if name == "" {
+			return nil, fmt.Errorf("--query-set cannot be empty")
+		}
+		if _, ok := selected[name]; ok {
+			continue
+		}
+		selected[name] = struct{}{}
+		selectedOrder = append(selectedOrder, name)
+	}
+
+	matched := map[string]struct{}{}
+	out := make([]config.QuerySet, 0, len(selected))
+	for _, querySet := range querySets {
+		if _, ok := selected[querySet.Name]; !ok {
+			continue
+		}
+		out = append(out, querySet)
+		matched[querySet.Name] = struct{}{}
+	}
+
+	for _, name := range selectedOrder {
+		if _, ok := matched[name]; !ok {
+			return nil, fmt.Errorf("unknown query set %q", name)
+		}
+	}
+
+	return out, nil
 }
 
 func queryNames(queries []query.Query) map[string]struct{} {
@@ -336,12 +385,8 @@ func configureSearchPath(ctx context.Context, conn *pgx.Conn, searchPath []strin
 	return nil
 }
 
-func manifestHasSchema(cfg *config.Config) bool {
-	if cfg == nil {
-		return false
-	}
-
-	for _, querySet := range cfg.QuerySets {
+func querySetsHaveSchema(querySets []config.QuerySet) bool {
+	for _, querySet := range querySets {
 		if len(querySet.Schema.Before) > 0 || len(querySet.Schema.After) > 0 {
 			return true
 		}

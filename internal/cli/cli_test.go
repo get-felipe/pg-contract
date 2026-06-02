@@ -208,6 +208,57 @@ func TestRunCheckRejectsEmptyConfigFlag(t *testing.T) {
 	}
 }
 
+func TestRunCheckRejectsEmptyQuerySetFlag(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	code := Run([]string{"check", "--query-set", ""}, &stdout, &stderr)
+
+	if code != 2 {
+		t.Fatalf("expected exit code 2, got %d", code)
+	}
+	if !strings.Contains(stderr.String(), "query-set cannot be empty") {
+		t.Fatalf("expected empty query-set error, got %q", stderr.String())
+	}
+}
+
+func TestRunCheckPassesQuerySetSelection(t *testing.T) {
+	root := t.TempDir()
+	queriesDir := filepath.Join(root, "queries")
+	if err := os.MkdirAll(queriesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(queriesDir, "find.sql"), []byte("-- name: customers.find\nselect 1;\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	configFile := filepath.Join(root, "pg-contract.yaml")
+	if err := os.WriteFile(configFile, []byte(`version: "0.2"
+query_sets:
+  - name: app
+    queries: queries
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	code := Run([]string{
+		"check",
+		"--before-url", "postgres://%zz",
+		"--after-url", "postgres://%zz",
+		"--config", configFile,
+		"--query-set", "missing",
+	}, &stdout, &stderr)
+
+	if code != 2 {
+		t.Fatalf("expected exit code 2, got %d", code)
+	}
+	if !strings.Contains(stderr.String(), "unknown query set \"missing\"") {
+		t.Fatalf("expected query-set selection to reach checker, got %q", stderr.String())
+	}
+}
+
 func TestRunInitWritesConfig(t *testing.T) {
 	root := t.TempDir()
 	queriesDir := filepath.Join(root, "queries")

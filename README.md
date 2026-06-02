@@ -146,6 +146,16 @@ pg-contract check \
   --config pg-contract.yaml
 ```
 
+Run one or more manifest query sets when a PR only touches part of a larger repository:
+
+```sh
+pg-contract check \
+  --before-url "$PG_CONTRACT_BEFORE_URL" \
+  --after-url "$PG_CONTRACT_AFTER_URL" \
+  --config pg-contract.yaml \
+  --query-set app
+```
+
 See [Configuration](docs/CONFIGURATION.md) for details.
 
 ## Output Formats
@@ -205,7 +215,7 @@ Near-term:
 - Improve diagnostics for more Postgres SQLSTATEs.
 - Add PR-focused documentation for common CI setups.
 - Add focused fixtures for result-shape limitations and additional SQLSTATEs.
-- Add query-set and tag filtering for manifest workflows.
+- Add tag filtering for manifest workflows.
 
 Later:
 

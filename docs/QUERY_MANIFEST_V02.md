@@ -185,7 +185,7 @@ Multiple files would reduce merge conflicts in large repositories, but they make
 ## Implementation Decisions
 
 - `--queries`, `--schema-before`, and `--schema-after` are mutually exclusive with v0.2 `query_sets`. In manifest mode, query sets own query and schema inputs.
-- `--query-set` selection is not implemented in the first v0.2 parser. All query sets run in manifest order.
+- `--query-set` is repeatable. When provided, only selected query sets are loaded and checked; selected sets still run in manifest order. Full manifest runs still validate every query override.
 - Tags are metadata only in the first implementation. They appear in JSON results but are not filters.
 - Manifest paths are resolved relative to the manifest file.
 - Strict YAML decoding is preserved so typos fail early.

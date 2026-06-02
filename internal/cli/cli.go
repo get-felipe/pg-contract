@@ -76,6 +76,7 @@ func normalizeBuildVersion(version string) string {
 func runCheck(args []string, stdout io.Writer, stderr io.Writer) int {
 	var opts check.Options
 	var timeout time.Duration
+	var querySets stringListFlag
 	noConfig := false
 	format := "text"
 
@@ -90,6 +91,7 @@ func runCheck(args []string, stdout io.Writer, stderr io.Writer) int {
 	flags.StringVar(&opts.QueriesPath, "queries", "", "directory containing .sql query files; optional with config version 0.2 query_sets")
 	flags.StringVar(&opts.ConfigPath, "config", "", "optional pg-contract YAML config file")
 	flags.BoolVar(&noConfig, "no-config", noConfig, "do not auto-load pg-contract.yaml")
+	flags.Var(&querySets, "query-set", "manifest v0.2 query set to run; may be repeated")
 	flags.StringVar(&format, "format", format, "output format: text, json, or github")
 	flags.DurationVar(&timeout, "timeout", 30*time.Second, "maximum time for the check")
 
@@ -103,6 +105,7 @@ func runCheck(args []string, stdout io.Writer, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "unexpected argument: %s\n", flags.Arg(0))
 		return 2
 	}
+	opts.QuerySets = querySets.Values()
 	configWasSet := flagWasSet(flags, "config")
 	if noConfig && configWasSet {
 		fmt.Fprintln(stderr, "check failed: --config and --no-config cannot be used together")
@@ -146,6 +149,30 @@ func runCheck(args []string, stdout io.Writer, stderr io.Writer) int {
 		report.WriteGitHub(stdout, result)
 	}
 	return check.ExitCode(result)
+}
+
+type stringListFlag []string
+
+func (f *stringListFlag) Set(value string) error {
+	normalized := strings.TrimSpace(value)
+	if normalized == "" {
+		return fmt.Errorf("query-set cannot be empty")
+	}
+	*f = append(*f, normalized)
+	return nil
+}
+
+func (f *stringListFlag) String() string {
+	if f == nil {
+		return ""
+	}
+	return strings.Join(*f, ",")
+}
+
+func (f stringListFlag) Values() []string {
+	out := make([]string, len(f))
+	copy(out, f)
+	return out
 }
 
 func flagWasSet(flags *flag.FlagSet, name string) bool {

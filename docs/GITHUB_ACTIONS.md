@@ -27,7 +27,7 @@ jobs:
       # Prepare the before/after Postgres databases here.
 
       - name: Check Postgres query compatibility
-        uses: get-felipe/pg-contract@v0.1.0-alpha.2
+        uses: get-felipe/pg-contract@v0.1.0-alpha.3
         with:
           before-url: ${{ secrets.PG_CONTRACT_BEFORE_URL }}
           after-url: ${{ secrets.PG_CONTRACT_AFTER_URL }}

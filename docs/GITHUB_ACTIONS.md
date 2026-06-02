@@ -27,7 +27,7 @@ jobs:
       # Prepare the before/after Postgres databases here.
 
       - name: Check Postgres query compatibility
-        uses: get-felipe/pg-contract@v0.1.0-alpha.3
+        uses: get-felipe/pg-contract@v0.1.0-alpha.4
         with:
           before-url: ${{ secrets.PG_CONTRACT_BEFORE_URL }}
           after-url: ${{ secrets.PG_CONTRACT_AFTER_URL }}
@@ -55,7 +55,7 @@ When `config` points to a manifest v0.2 file with `query_sets`, omit `queries`, 
 
 ```yaml
 - name: Check Postgres query compatibility
-  uses: get-felipe/pg-contract@v0.1.0-alpha.3
+  uses: get-felipe/pg-contract@v0.1.0-alpha.4
   with:
     before-url: ${{ secrets.PG_CONTRACT_BEFORE_URL }}
     after-url: ${{ secrets.PG_CONTRACT_AFTER_URL }}

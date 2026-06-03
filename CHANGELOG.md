@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+No unreleased changes yet.
+
+## [0.1.0-alpha.7] - 2026-06-03
+
 ### Added
 
 - Focused manifest checks with repeatable `--tag` selection in the CLI and `tag` input in the GitHub Action.

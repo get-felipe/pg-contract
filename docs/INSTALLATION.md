@@ -5,7 +5,7 @@ This page documents reproducible installation paths for `pg-contract`.
 Use a pinned version when installing in CI or sharing setup instructions:
 
 ```sh
-VERSION=v0.1.0-alpha.6
+VERSION=v0.1.0-alpha.7
 ```
 
 ## Go Install
@@ -13,7 +13,7 @@ VERSION=v0.1.0-alpha.6
 If Go is already available, install the CLI directly from the tagged module version:
 
 ```sh
-go install github.com/get-felipe/pg-contract/cmd/pg-contract@v0.1.0-alpha.6
+go install github.com/get-felipe/pg-contract/cmd/pg-contract@v0.1.0-alpha.7
 pg-contract version
 ```
 
@@ -23,22 +23,22 @@ Go installs command binaries into `GOBIN` when it is set, otherwise into the `bi
 
 GitHub Release archives are available for macOS, Linux, and Windows on `amd64` and `arm64`.
 
-Published assets for `v0.1.0-alpha.6`:
+Published assets for `v0.1.0-alpha.7`:
 
-- `pg-contract_0.1.0-alpha.6_darwin_amd64.tar.gz`
-- `pg-contract_0.1.0-alpha.6_darwin_arm64.tar.gz`
-- `pg-contract_0.1.0-alpha.6_linux_amd64.tar.gz`
-- `pg-contract_0.1.0-alpha.6_linux_arm64.tar.gz`
-- `pg-contract_0.1.0-alpha.6_windows_amd64.zip`
-- `pg-contract_0.1.0-alpha.6_windows_arm64.zip`
-- `pg-contract_0.1.0-alpha.6_checksums.txt`
+- `pg-contract_0.1.0-alpha.7_darwin_amd64.tar.gz`
+- `pg-contract_0.1.0-alpha.7_darwin_arm64.tar.gz`
+- `pg-contract_0.1.0-alpha.7_linux_amd64.tar.gz`
+- `pg-contract_0.1.0-alpha.7_linux_arm64.tar.gz`
+- `pg-contract_0.1.0-alpha.7_windows_amd64.zip`
+- `pg-contract_0.1.0-alpha.7_windows_arm64.zip`
+- `pg-contract_0.1.0-alpha.7_checksums.txt`
 
 ### macOS
 
 Use `ARCH=arm64` for Apple Silicon and `ARCH=amd64` for Intel Macs.
 
 ```sh
-VERSION=v0.1.0-alpha.6
+VERSION=v0.1.0-alpha.7
 ASSET_VERSION="${VERSION#v}"
 OS=darwin
 ARCH=arm64
@@ -65,7 +65,7 @@ Make sure `$HOME/.local/bin` is on your `PATH`, or install the binary into anoth
 Use `ARCH=amd64` for x86-64 Linux and `ARCH=arm64` for ARM64 Linux.
 
 ```sh
-VERSION=v0.1.0-alpha.6
+VERSION=v0.1.0-alpha.7
 ASSET_VERSION="${VERSION#v}"
 OS=linux
 ARCH=amd64
@@ -92,7 +92,7 @@ Make sure `$HOME/.local/bin` is on your `PATH`, or install the binary into anoth
 Use `$Arch = "amd64"` for x86-64 Windows and `$Arch = "arm64"` for ARM64 Windows.
 
 ```powershell
-$Version = "v0.1.0-alpha.6"
+$Version = "v0.1.0-alpha.7"
 $AssetVersion = $Version.TrimStart("v")
 $Arch = "amd64"
 $Archive = "pg-contract_${AssetVersion}_windows_${Arch}.zip"

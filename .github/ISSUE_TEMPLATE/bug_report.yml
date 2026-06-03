@@ -15,7 +15,7 @@ body:
     attributes:
       label: pg-contract version
       description: Use `pg-contract version`, a tag, or a commit SHA.
-      placeholder: v0.1.0-alpha.6
+      placeholder: v0.1.0-alpha.7
     validations:
       required: true
 

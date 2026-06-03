@@ -48,6 +48,7 @@ The action always uses GitHub annotation output. Breaking queries appear as work
 | `config` | No | | Optional `pg-contract.yaml` path. |
 | `no-config` | No | `false` | Set to `true` to disable automatic config loading. |
 | `query-set` | No | | Manifest v0.2 query set name. Use one query set per line for multiple focused sets. |
+| `tag` | No | | Manifest v0.2 tag name. Use one tag per line to run queries matching any selected tag. |
 | `timeout` | No | `30s` | Per-connection timeout. |
 
 The command auto-loads `pg-contract.yaml` from the workflow working directory. Set `config` if the file lives elsewhere, or set `no-config: true` if the workflow should ignore it.
@@ -63,10 +64,10 @@ When `config` points to a manifest v0.2 file with `query_sets`, omit `queries`, 
     config: pg-contract.yaml
 ```
 
-For focused manifest checks, add `query-set`. Multiple sets can be passed with a multi-line value:
+For focused manifest checks, add `query-set` and optionally `tag`. Multiple sets or tags can be passed with multi-line values:
 
 ```yaml
-- name: Check selected query sets
+- name: Check selected manifest scope
   uses: get-felipe/pg-contract@v0.1.0-alpha.6
   with:
     before-url: ${{ secrets.PG_CONTRACT_BEFORE_URL }}
@@ -75,6 +76,9 @@ For focused manifest checks, add `query-set`. Multiple sets can be passed with a
     query-set: |
       app
       reporting
+    tag: |
+      customer-facing
+      billing
 ```
 
 Generate a starter config locally with:

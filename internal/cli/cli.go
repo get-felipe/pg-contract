@@ -76,7 +76,8 @@ func normalizeBuildVersion(version string) string {
 func runCheck(args []string, stdout io.Writer, stderr io.Writer) int {
 	var opts check.Options
 	var timeout time.Duration
-	var querySets stringListFlag
+	querySets := stringListFlag{name: "query-set"}
+	tags := stringListFlag{name: "tag"}
 	noConfig := false
 	format := "text"
 
@@ -92,6 +93,7 @@ func runCheck(args []string, stdout io.Writer, stderr io.Writer) int {
 	flags.StringVar(&opts.ConfigPath, "config", "", "optional pg-contract YAML config file")
 	flags.BoolVar(&noConfig, "no-config", noConfig, "do not auto-load pg-contract.yaml")
 	flags.Var(&querySets, "query-set", "manifest v0.2 query set to run; may be repeated")
+	flags.Var(&tags, "tag", "manifest v0.2 tag to run; may be repeated")
 	flags.StringVar(&format, "format", format, "output format: text, json, or github")
 	flags.DurationVar(&timeout, "timeout", 30*time.Second, "maximum time for the check")
 
@@ -106,6 +108,7 @@ func runCheck(args []string, stdout io.Writer, stderr io.Writer) int {
 		return 2
 	}
 	opts.QuerySets = querySets.Values()
+	opts.Tags = tags.Values()
 	configWasSet := flagWasSet(flags, "config")
 	if noConfig && configWasSet {
 		fmt.Fprintln(stderr, "check failed: --config and --no-config cannot be used together")
@@ -151,14 +154,17 @@ func runCheck(args []string, stdout io.Writer, stderr io.Writer) int {
 	return check.ExitCode(result)
 }
 
-type stringListFlag []string
+type stringListFlag struct {
+	name   string
+	values []string
+}
 
 func (f *stringListFlag) Set(value string) error {
 	normalized := strings.TrimSpace(value)
 	if normalized == "" {
-		return fmt.Errorf("query-set cannot be empty")
+		return fmt.Errorf("%s cannot be empty", f.name)
 	}
-	*f = append(*f, normalized)
+	f.values = append(f.values, normalized)
 	return nil
 }
 
@@ -166,12 +172,15 @@ func (f *stringListFlag) String() string {
 	if f == nil {
 		return ""
 	}
-	return strings.Join(*f, ",")
+	return strings.Join(f.values, ",")
 }
 
-func (f stringListFlag) Values() []string {
-	out := make([]string, len(f))
-	copy(out, f)
+func (f *stringListFlag) Values() []string {
+	if f == nil {
+		return nil
+	}
+	out := make([]string, len(f.values))
+	copy(out, f.values)
 	return out
 }
 

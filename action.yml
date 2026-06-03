@@ -36,6 +36,10 @@ inputs:
     description: Optional manifest v0.2 query set name. Use one query set per line to run multiple sets.
     required: false
     default: ""
+  tag:
+    description: Optional manifest v0.2 tag name. Use one tag per line to run queries matching any selected tag.
+    required: false
+    default: ""
   timeout:
     description: Per-connection timeout used by pg-contract.
     required: false
@@ -62,6 +66,7 @@ runs:
         PG_CONTRACT_CONFIG: ${{ inputs.config }}
         PG_CONTRACT_NO_CONFIG: ${{ inputs.no-config }}
         PG_CONTRACT_QUERY_SET: ${{ inputs.query-set }}
+        PG_CONTRACT_TAG: ${{ inputs.tag }}
         PG_CONTRACT_TIMEOUT: ${{ inputs.timeout }}
       run: |
         set -euo pipefail
@@ -97,10 +102,25 @@ runs:
           fi
         }
 
+        append_tag() {
+          local tag="$1"
+          tag="${tag#"${tag%%[![:space:]]*}"}"
+          tag="${tag%"${tag##*[![:space:]]}"}"
+          if [ -n "$tag" ]; then
+            args+=(--tag "$tag")
+          fi
+        }
+
         if [ -n "$PG_CONTRACT_QUERY_SET" ]; then
           while IFS= read -r query_set; do
             append_query_set "$query_set"
           done <<< "$PG_CONTRACT_QUERY_SET"
+        fi
+
+        if [ -n "$PG_CONTRACT_TAG" ]; then
+          while IFS= read -r tag; do
+            append_tag "$tag"
+          done <<< "$PG_CONTRACT_TAG"
         fi
 
         if [ -n "$PG_CONTRACT_QUERIES" ]; then

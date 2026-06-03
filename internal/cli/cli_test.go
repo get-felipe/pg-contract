@@ -222,6 +222,20 @@ func TestRunCheckRejectsEmptyQuerySetFlag(t *testing.T) {
 	}
 }
 
+func TestRunCheckRejectsEmptyTagFlag(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	code := Run([]string{"check", "--tag", ""}, &stdout, &stderr)
+
+	if code != 2 {
+		t.Fatalf("expected exit code 2, got %d", code)
+	}
+	if !strings.Contains(stderr.String(), "tag cannot be empty") {
+		t.Fatalf("expected empty tag error, got %q", stderr.String())
+	}
+}
+
 func TestRunCheckPassesQuerySetSelection(t *testing.T) {
 	root := t.TempDir()
 	queriesDir := filepath.Join(root, "queries")
@@ -256,6 +270,47 @@ query_sets:
 	}
 	if !strings.Contains(stderr.String(), "unknown query set \"missing\"") {
 		t.Fatalf("expected query-set selection to reach checker, got %q", stderr.String())
+	}
+}
+
+func TestRunCheckPassesTagSelection(t *testing.T) {
+	root := t.TempDir()
+	queriesDir := filepath.Join(root, "queries")
+	if err := os.MkdirAll(queriesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(queriesDir, "find.sql"), []byte("-- name: customers.find\nselect 1;\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	configFile := filepath.Join(root, "pg-contract.yaml")
+	if err := os.WriteFile(configFile, []byte(`version: "0.2"
+query_sets:
+  - name: app
+    queries: queries
+queries:
+  customers.find:
+    tags:
+      - customer-facing
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	code := Run([]string{
+		"check",
+		"--before-url", "postgres://%zz",
+		"--after-url", "postgres://%zz",
+		"--config", configFile,
+		"--tag", "missing",
+	}, &stdout, &stderr)
+
+	if code != 2 {
+		t.Fatalf("expected exit code 2, got %d", code)
+	}
+	if !strings.Contains(stderr.String(), "unknown tag \"missing\"") {
+		t.Fatalf("expected tag selection to reach checker, got %q", stderr.String())
 	}
 }
 

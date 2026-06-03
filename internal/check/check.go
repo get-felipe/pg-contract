@@ -21,6 +21,7 @@ type Options struct {
 	QueriesPath  string
 	ConfigPath   string
 	QuerySets    []string
+	Tags         []string
 }
 
 type Report struct {
@@ -77,6 +78,12 @@ type DBError struct {
 type Diagnostic struct {
 	Reason     string
 	Suggestion string
+}
+
+type loadedQuerySet struct {
+	set     config.QuerySet
+	queries []query.Query
+	tags    map[string][]string
 }
 
 var diagnosticsBySQLState = map[string]Diagnostic{
@@ -174,8 +181,8 @@ func Run(ctx context.Context, opts Options) (*Report, error) {
 		return runManifest(ctx, opts, cfg)
 	}
 
-	if len(opts.QuerySets) > 0 {
-		return nil, fmt.Errorf("--query-set requires config version 0.2 query_sets")
+	if len(opts.QuerySets) > 0 || len(opts.Tags) > 0 {
+		return nil, fmt.Errorf("--query-set/--tag require config version 0.2 query_sets")
 	}
 	if strings.TrimSpace(opts.QueriesPath) == "" {
 		return nil, fmt.Errorf("missing required --queries")
@@ -239,37 +246,53 @@ func runManifest(ctx context.Context, opts Options, cfg *config.Config) (*Report
 	if err != nil {
 		return nil, err
 	}
-	if opts.BeforeURL == opts.AfterURL && querySetsHaveSchema(querySets) {
-		return nil, fmt.Errorf("query_sets schema files require distinct --before-url and --after-url values")
+	selectedTags, err := selectTags(opts.Tags)
+	if err != nil {
+		return nil, err
 	}
-
-	loaded := make([]struct {
-		set     config.QuerySet
-		queries []query.Query
-	}, 0, len(querySets))
+	loaded := make([]loadedQuerySet, 0, len(querySets))
 	known := map[string]struct{}{}
 	filesByName := map[string]string{}
+	availableTags := map[string]struct{}{}
 	total := 0
 	for _, querySet := range querySets {
 		queries, err := query.LoadPaths(cfg.ResolvePaths([]string(querySet.Queries)))
 		if err != nil {
 			return nil, fmt.Errorf("load query set %q: %w", querySet.Name, err)
 		}
+		filteredQueries := make([]query.Query, 0, len(queries))
+		tagsByName := make(map[string][]string, len(queries))
 		for _, q := range queries {
 			if previous, ok := filesByName[q.Name]; ok {
 				return nil, fmt.Errorf("duplicate query name %q in %s and %s", q.Name, previous, q.File)
 			}
 			filesByName[q.Name] = q.File
 			known[q.Name] = struct{}{}
+			tags := cfg.Tags(querySet, q.Name)
+			tagsByName[q.Name] = tags
+			for _, tag := range tags {
+				availableTags[tag] = struct{}{}
+			}
+			if !matchesTags(tags, selectedTags) {
+				continue
+			}
+			filteredQueries = append(filteredQueries, q)
 		}
-		total += len(queries)
-		loaded = append(loaded, struct {
-			set     config.QuerySet
-			queries []query.Query
-		}{set: querySet, queries: queries})
+		if len(filteredQueries) == 0 {
+			continue
+		}
+		total += len(filteredQueries)
+		loaded = append(loaded, loadedQuerySet{set: querySet, queries: filteredQueries, tags: tagsByName})
 	}
 
-	if len(opts.QuerySets) == 0 {
+	if err := validateSelectedTags(selectedTags, availableTags, total); err != nil {
+		return nil, err
+	}
+	if opts.BeforeURL == opts.AfterURL && loadedQuerySetsHaveSchema(loaded) {
+		return nil, fmt.Errorf("query_sets schema files require distinct --before-url and --after-url values")
+	}
+
+	if len(opts.QuerySets) == 0 && len(opts.Tags) == 0 {
 		if err := cfg.ValidateQueryNames(known); err != nil {
 			return nil, err
 		}
@@ -310,7 +333,7 @@ func runManifest(ctx context.Context, opts Options, cfg *config.Config) (*Report
 		for queryIndex, q := range loadedSet.queries {
 			result := Result{
 				QuerySet: querySet.Name,
-				Tags:     cfg.Tags(querySet, q.Name),
+				Tags:     loadedSet.tags[q.Name],
 				Query:    q,
 			}
 			params := cfg.Params(q.Name)
@@ -360,6 +383,51 @@ func selectQuerySets(querySets []config.QuerySet, selectors []string) ([]config.
 	}
 
 	return out, nil
+}
+
+func selectTags(selectors []string) (map[string]struct{}, error) {
+	if len(selectors) == 0 {
+		return nil, nil
+	}
+
+	selected := map[string]struct{}{}
+	for _, selector := range selectors {
+		tag := strings.TrimSpace(selector)
+		if tag == "" {
+			return nil, fmt.Errorf("--tag cannot be empty")
+		}
+		selected[tag] = struct{}{}
+	}
+	return selected, nil
+}
+
+func matchesTags(tags []string, selected map[string]struct{}) bool {
+	if len(selected) == 0 {
+		return true
+	}
+
+	for _, tag := range tags {
+		if _, ok := selected[tag]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+func validateSelectedTags(selected map[string]struct{}, available map[string]struct{}, total int) error {
+	if len(selected) == 0 {
+		return nil
+	}
+
+	for tag := range selected {
+		if _, ok := available[tag]; !ok {
+			return fmt.Errorf("unknown tag %q", tag)
+		}
+	}
+	if total == 0 {
+		return fmt.Errorf("no queries matched selected tags")
+	}
+	return nil
 }
 
 func queryNames(queries []query.Query) map[string]struct{} {
@@ -414,9 +482,9 @@ func configureSearchPath(ctx context.Context, conn *pgx.Conn, searchPath []strin
 	return nil
 }
 
-func querySetsHaveSchema(querySets []config.QuerySet) bool {
-	for _, querySet := range querySets {
-		if len(querySet.Schema.Before) > 0 || len(querySet.Schema.After) > 0 {
+func loadedQuerySetsHaveSchema(loaded []loadedQuerySet) bool {
+	for _, querySet := range loaded {
+		if len(querySet.set.Schema.Before) > 0 || len(querySet.set.Schema.After) > 0 {
 			return true
 		}
 	}

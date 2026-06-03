@@ -367,8 +367,22 @@ func TestRunRejectsQuerySetSelectionOutsideManifest(t *testing.T) {
 		AfterURL:  "postgres://%zz",
 		QuerySets: []string{"app"},
 	})
-	if err == nil || !strings.Contains(err.Error(), "--query-set requires config version 0.2") {
+	if err == nil || !strings.Contains(err.Error(), "--query-set/--tag require config version 0.2") {
 		t.Fatalf("expected query-set manifest requirement before legacy validation, got %v", err)
+	}
+}
+
+func TestRunRejectsTagSelectionOutsideManifest(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	_, err := Run(ctx, Options{
+		BeforeURL: "postgres://%zz",
+		AfterURL:  "postgres://%zz",
+		Tags:      []string{"customer-facing"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "--query-set/--tag require config version 0.2") {
+		t.Fatalf("expected tag manifest requirement before legacy validation, got %v", err)
 	}
 }
 
@@ -401,6 +415,143 @@ query_sets:
 	})
 	if err == nil || !strings.Contains(err.Error(), "unknown query set \"reporting\"") {
 		t.Fatalf("expected unknown query set before connecting, got %v", err)
+	}
+}
+
+func TestRunManifestRejectsUnknownTagBeforeConnecting(t *testing.T) {
+	root := t.TempDir()
+	queriesDir := filepath.Join(root, "queries")
+	if err := os.MkdirAll(queriesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(queriesDir, "find.sql"), []byte("-- name: customers.find\nselect 1;\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	configFile := filepath.Join(root, "pg-contract.yaml")
+	if err := os.WriteFile(configFile, []byte(`version: "0.2"
+query_sets:
+  - name: app
+    queries: queries
+    tags:
+      - app
+queries:
+  customers.find:
+    tags:
+      - customer-facing
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	_, err := Run(ctx, Options{
+		BeforeURL:  "postgres://%zz",
+		AfterURL:   "postgres://%zz",
+		ConfigPath: configFile,
+		Tags:       []string{"billing"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "unknown tag \"billing\"") {
+		t.Fatalf("expected unknown tag before connecting, got %v", err)
+	}
+}
+
+func TestRunManifestFiltersQueriesByTagBeforeConnecting(t *testing.T) {
+	root := t.TempDir()
+	queriesDir := filepath.Join(root, "queries")
+	if err := os.MkdirAll(queriesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(queriesDir, "find.sql"), []byte("-- name: customers.find\nselect 1;\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	configFile := filepath.Join(root, "pg-contract.yaml")
+	if err := os.WriteFile(configFile, []byte(`version: "0.2"
+query_sets:
+  - name: app
+    queries: queries
+queries:
+  customers.find:
+    tags:
+      - customer-facing
+  reporting.list:
+    tags:
+      - reporting
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	_, err := Run(ctx, Options{
+		BeforeURL:  "postgres://%zz",
+		AfterURL:   "postgres://%zz",
+		ConfigPath: configFile,
+		Tags:       []string{"customer-facing"},
+	})
+	if err == nil {
+		t.Fatal("expected connection failure after loading only the selected tag")
+	}
+	if strings.Contains(err.Error(), "config references unknown query") {
+		t.Fatalf("expected unselected tag config override to be skipped, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "connect before database") {
+		t.Fatalf("expected connection failure after selected tag loading, got %v", err)
+	}
+}
+
+func TestRunManifestTagFilterSkipsUnmatchedQuerySetSchemas(t *testing.T) {
+	root := t.TempDir()
+	appDir := filepath.Join(root, "app")
+	reportingDir := filepath.Join(root, "reporting")
+	if err := os.MkdirAll(appDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(reportingDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(appDir, "find.sql"), []byte("-- name: customers.find\nselect 1;\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(reportingDir, "list.sql"), []byte("-- name: reporting.list\nselect 1;\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	configFile := filepath.Join(root, "pg-contract.yaml")
+	if err := os.WriteFile(configFile, []byte(`version: "0.2"
+query_sets:
+  - name: app
+    queries: app
+    tags:
+      - app
+  - name: reporting
+    queries: reporting
+    schema:
+      before: reporting-before.sql
+      after: reporting-after.sql
+    tags:
+      - reporting
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	_, err := Run(ctx, Options{
+		BeforeURL:  "postgres://%zz",
+		AfterURL:   "postgres://%zz",
+		ConfigPath: configFile,
+		Tags:       []string{"app"},
+	})
+	if err == nil {
+		t.Fatal("expected connection failure after filtering out the schema-owning query set")
+	}
+	if strings.Contains(err.Error(), "query_sets schema files require distinct") {
+		t.Fatalf("expected unmatched query set schema to be ignored, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "connect before database") {
+		t.Fatalf("expected connection failure after tag filtering, got %v", err)
 	}
 }
 

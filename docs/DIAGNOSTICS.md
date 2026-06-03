@@ -8,6 +8,10 @@ The first compatibility rule is intentionally narrow:
 - valid before and invalid after: breaking schema contract
 - invalid before: reported separately because the query did not establish a valid before-contract
 
+`pg-contract` also compares the result columns returned by prepared statements. If a query prepares successfully before and after but the returned column count, order, name, or formatted Postgres type changes, the result is reported as a breaking contract change without a SQLSTATE.
+
+Result shape comparison is intentionally metadata-only. It does not execute the query, inspect row values, infer application scanner structs, or compare the internal definition of a type whose visible formatted type name stayed the same.
+
 ## Covered SQLSTATEs
 
 | SQLSTATE | Condition | Typical compatibility signal | False-positive risk |
@@ -35,5 +39,6 @@ Text, JSON, and GitHub annotation outputs use the same diagnostic classifier:
 - `reason`: plain-English summary for the SQLSTATE
 - `suggestion`: conservative next step for preserving or updating the query contract
 - raw Postgres fields: SQLSTATE, message, hint, detail, position, and object names when Postgres provides them
+- result shape changes: returned column differences when both before and after prepare successfully
 
 When no specific SQLSTATE mapping exists, `pg-contract` falls back to the Postgres message and a conservative suggestion to preserve the previous database contract until application queries are updated.

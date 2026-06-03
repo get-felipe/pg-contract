@@ -183,6 +183,6 @@ from customers
 where id = $1;
 ```
 
-JSON output may include optional `query_set` and `tags` fields for manifest results. Existing query, status, summary, SQLSTATE, reason, and suggestion fields remain stable.
+JSON output may include optional `query_set` and `tags` fields for manifest results. Result outcomes can include `result_shape`, and breaking results can include `shape_change` when returned columns changed even though both schemas accepted the query.
 
 See [Query Manifest v0.2](QUERY_MANIFEST_V02.md) for design rationale, rejected alternatives, and migration notes.

@@ -19,6 +19,19 @@ func TestExitCode(t *testing.T) {
 		t.Fatalf("expected breaking exit code 1, got %d", got)
 	}
 
+	shapeBreaking := &Report{Results: []Result{{
+		Before: Outcome{OK: true, ResultShape: []ResultColumn{{Name: "email", DataType: "text"}}},
+		After:  Outcome{OK: true, ResultShape: []ResultColumn{{Name: "email", DataType: "character varying(320)"}}},
+		ShapeChange: &ShapeChange{Differences: []ShapeDifference{{
+			Kind:     "column_type",
+			Position: 1,
+			Message:  "column 1 \"email\" type changed from text to character varying(320)",
+		}}},
+	}}}
+	if got := ExitCode(shapeBreaking); got != 1 {
+		t.Fatalf("expected shape breaking exit code 1, got %d", got)
+	}
+
 	invalidBefore := &Report{Results: []Result{{Before: Outcome{Error: &DBError{Code: "42P01"}}, After: Outcome{Error: &DBError{Code: "42P01"}}}}}
 	if got := ExitCode(invalidBefore); got != 2 {
 		t.Fatalf("expected invalid-before exit code 2, got %d", got)
@@ -27,6 +40,44 @@ func TestExitCode(t *testing.T) {
 	clean := &Report{Results: []Result{{Before: Outcome{OK: true}, After: Outcome{OK: true}}}}
 	if got := ExitCode(clean); got != 0 {
 		t.Fatalf("expected clean exit code 0, got %d", got)
+	}
+}
+
+func TestCompareResultShapes(t *testing.T) {
+	before := Outcome{OK: true, ResultShape: []ResultColumn{
+		{Name: "id", DataType: "uuid"},
+		{Name: "email", DataType: "text"},
+	}}
+	after := Outcome{OK: true, ResultShape: []ResultColumn{
+		{Name: "id", DataType: "uuid"},
+		{Name: "contact_email", DataType: "character varying(320)"},
+		{Name: "created_at", DataType: "timestamp with time zone"},
+	}}
+
+	change := compareResultShapes(before, after)
+	if change == nil {
+		t.Fatal("expected result shape change")
+	}
+	if len(change.Differences) != 3 {
+		t.Fatalf("expected 3 differences, got %#v", change.Differences)
+	}
+	if change.Differences[0].Kind != "column_name" || change.Differences[0].Position != 2 {
+		t.Fatalf("unexpected first difference: %#v", change.Differences[0])
+	}
+	if change.Differences[1].Kind != "column_type" || change.Differences[1].Before.DataType != "text" || change.Differences[1].After.DataType != "character varying(320)" {
+		t.Fatalf("unexpected second difference: %#v", change.Differences[1])
+	}
+	if change.Differences[2].Kind != "column_added" || change.Differences[2].Position != 3 {
+		t.Fatalf("unexpected third difference: %#v", change.Differences[2])
+	}
+}
+
+func TestCompareResultShapesIgnoresInvalidOutcomes(t *testing.T) {
+	before := Outcome{Error: &DBError{Code: "42P01"}}
+	after := Outcome{OK: true, ResultShape: []ResultColumn{{Name: "id", DataType: "uuid"}}}
+
+	if got := compareResultShapes(before, after); got != nil {
+		t.Fatalf("expected no shape comparison for invalid outcomes, got %#v", got)
 	}
 }
 
@@ -197,6 +248,84 @@ select array_length($1, 1) as tag_count;
 	}
 	if got := ExitCode(report); got != 0 {
 		t.Fatalf("expected clean exit code 0, got %d with report %#v", got, report)
+	}
+}
+
+func TestRunWithPostgresResultShapeChange(t *testing.T) {
+	beforeURL := os.Getenv("PG_CONTRACT_TEST_BEFORE_URL")
+	afterURL := os.Getenv("PG_CONTRACT_TEST_AFTER_URL")
+	if beforeURL == "" || afterURL == "" {
+		t.Skip("set PG_CONTRACT_TEST_BEFORE_URL and PG_CONTRACT_TEST_AFTER_URL to run integration test")
+	}
+	if beforeURL == afterURL {
+		t.Skip("integration test requires separate before and after databases")
+	}
+
+	root := t.TempDir()
+	queriesDir := filepath.Join(root, "queries")
+	if err := os.MkdirAll(queriesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	table := fmt.Sprintf("pg_contract_shape_%d", time.Now().UnixNano())
+	beforeSchema := filepath.Join(root, "before.sql")
+	afterSchema := filepath.Join(root, "after.sql")
+	queryFile := filepath.Join(queriesDir, "list_customers.sql")
+	defer dropIntegrationTable(t, beforeURL, table)
+	defer dropIntegrationTable(t, afterURL, table)
+
+	if err := os.WriteFile(beforeSchema, []byte(fmt.Sprintf(`
+drop table if exists %[1]s;
+create table %[1]s (
+  id uuid primary key,
+  email text not null
+);
+`, table)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(afterSchema, []byte(fmt.Sprintf(`
+drop table if exists %[1]s;
+create table %[1]s (
+  id uuid primary key,
+  email varchar(320) not null
+);
+`, table)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(queryFile, []byte(fmt.Sprintf(`-- name: customers.list_shape
+select id, email
+from %s;
+`, table)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	report, err := Run(ctx, Options{
+		BeforeURL:    beforeURL,
+		AfterURL:     afterURL,
+		SchemaBefore: beforeSchema,
+		SchemaAfter:  afterSchema,
+		QueriesPath:  queriesDir,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	breaking := report.Breaking()
+	if len(breaking) != 1 {
+		t.Fatalf("expected 1 breaking query, got %d", len(breaking))
+	}
+	if !breaking[0].Before.OK || !breaking[0].After.OK || breaking[0].After.Error != nil {
+		t.Fatalf("expected both schemas to prepare successfully, got before=%#v after=%#v", breaking[0].Before, breaking[0].After)
+	}
+	if breaking[0].ShapeChange == nil || len(breaking[0].ShapeChange.Differences) != 1 {
+		t.Fatalf("expected one shape difference, got %#v", breaking[0].ShapeChange)
+	}
+	difference := breaking[0].ShapeChange.Differences[0]
+	if difference.Kind != "column_type" || difference.Before.DataType != "text" || difference.After.DataType != "character varying(320)" {
+		t.Fatalf("unexpected shape difference: %#v", difference)
 	}
 }
 
@@ -480,6 +609,7 @@ func TestRunWithPostgresExampleFixtures(t *testing.T) {
 		{name: "function-signature", exitCode: 1, sqlstate: "42883"},
 		{name: "enum-value", exitCode: 1, sqlstate: "22P02"},
 		{name: "search-path", exitCode: 1, sqlstate: "42P01"},
+		{name: "result-shape", exitCode: 1},
 	}
 
 	repoRoot := testRepoRoot(t)

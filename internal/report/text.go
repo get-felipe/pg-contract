@@ -41,15 +41,34 @@ func writeBreaking(w io.Writer, result check.Result) {
 	fmt.Fprintf(w, "FAIL %s\n", result.Query.Name)
 	fmt.Fprintf(w, "File: %s:%d\n\n", result.Query.File, result.Query.StartLine)
 	fmt.Fprintln(w, "Reason:")
-	fmt.Fprintf(w, "  %s\n\n", check.Reason(result.After.Error))
-	writePostgresError(w, result.After.Error)
+	fmt.Fprintf(w, "  %s\n\n", result.BreakingReason())
+	if result.ShapeChange != nil && result.After.OK {
+		writeShapeChange(w, result.ShapeChange)
+	} else {
+		writePostgresError(w, result.BreakingError())
+	}
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Impact:")
-	fmt.Fprintln(w, "  This query worked before the schema change and fails after it.")
+	if result.ShapeChange != nil && result.After.OK {
+		fmt.Fprintln(w, "  This query works before and after the schema change, but its returned columns changed.")
+	} else {
+		fmt.Fprintln(w, "  This query worked before the schema change and fails after it.")
+	}
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Suggested fix:")
-	fmt.Fprintf(w, "  %s\n", check.Suggestion(result.After.Error))
+	fmt.Fprintf(w, "  %s\n", result.BreakingSuggestion())
 	fmt.Fprintln(w)
+}
+
+func writeShapeChange(w io.Writer, change *check.ShapeChange) {
+	if change == nil || len(change.Differences) == 0 {
+		return
+	}
+
+	fmt.Fprintln(w, "Result shape change:")
+	for _, difference := range change.Differences {
+		fmt.Fprintf(w, "  - %s\n", difference.Message)
+	}
 }
 
 func writePostgresError(w io.Writer, err *check.DBError) {

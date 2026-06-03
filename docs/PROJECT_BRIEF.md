@@ -30,10 +30,11 @@ pg-contract check \
   --queries queries/
 ```
 
-The tool should report only the high-signal class of breakage:
+The tool should report the high-signal classes of breakage:
 
 ```text
 valid before + invalid after = breaking schema change
+valid before + valid after + changed result columns = breaking query contract
 ```
 
 ## Positioning
@@ -66,8 +67,9 @@ The first implementation can:
 1. Connect to a user-provided before database.
 2. Connect to a user-provided after database.
 3. Validate query files with Postgres prepared statements.
-4. Compare outcomes.
-5. Report queries that prepared successfully before but fail after.
+4. Compare prepare outcomes.
+5. Compare returned-column shape for queries that prepare successfully on both schemas.
+6. Report queries that fail after or return a different column contract after.
 
 The text reporter is for humans. The JSON reporter is for machine-readable CI integrations. The GitHub reporter emits workflow command annotations for pull request feedback. Machine-readable reports should not include database URLs or raw query text by default.
 
@@ -84,6 +86,6 @@ When Postgres cannot infer `$1`, `$2`, and other parameter types from context, `
 
 - The README demo is understandable in under five minutes.
 - `pg-contract check` finds a real valid-before/fail-after breakage.
-- Output includes query id, file path, Postgres error, and plain-English reason.
+- Output includes query id, file path, Postgres error or result-shape difference, and plain-English reason.
 - The core can run locally without cloud credentials.
 - CI usage is a thin wrapper around the CLI.

@@ -22,12 +22,13 @@ type JSONSummary struct {
 }
 
 type JSONResult struct {
-	QuerySet string      `json:"query_set,omitempty"`
-	Tags     []string    `json:"tags,omitempty"`
-	Query    JSONQuery   `json:"query"`
-	Status   string      `json:"status"`
-	Before   JSONOutcome `json:"before"`
-	After    JSONOutcome `json:"after"`
+	QuerySet    string           `json:"query_set,omitempty"`
+	Tags        []string         `json:"tags,omitempty"`
+	Query       JSONQuery        `json:"query"`
+	Status      string           `json:"status"`
+	Before      JSONOutcome      `json:"before"`
+	After       JSONOutcome      `json:"after"`
+	ShapeChange *JSONShapeChange `json:"shape_change,omitempty"`
 }
 
 type JSONQuery struct {
@@ -37,10 +38,31 @@ type JSONQuery struct {
 }
 
 type JSONOutcome struct {
-	OK         bool         `json:"ok"`
-	Reason     string       `json:"reason,omitempty"`
-	Suggestion string       `json:"suggestion,omitempty"`
-	Error      *JSONDBError `json:"error,omitempty"`
+	OK          bool               `json:"ok"`
+	ResultShape []JSONResultColumn `json:"result_shape,omitempty"`
+	Reason      string             `json:"reason,omitempty"`
+	Suggestion  string             `json:"suggestion,omitempty"`
+	Error       *JSONDBError       `json:"error,omitempty"`
+}
+
+type JSONResultColumn struct {
+	Name        string `json:"name"`
+	Type        string `json:"type"`
+	DataTypeOID uint32 `json:"type_oid,omitempty"`
+}
+
+type JSONShapeChange struct {
+	Reason      string                `json:"reason"`
+	Suggestion  string                `json:"suggestion"`
+	Differences []JSONShapeDifference `json:"differences"`
+}
+
+type JSONShapeDifference struct {
+	Kind     string            `json:"kind"`
+	Position int               `json:"position"`
+	Before   *JSONResultColumn `json:"before,omitempty"`
+	After    *JSONResultColumn `json:"after,omitempty"`
+	Message  string            `json:"message"`
 }
 
 type JSONDBError struct {
@@ -97,9 +119,9 @@ func NewJSONReport(report *check.Report) JSONReport {
 
 func newJSONResult(result check.Result) JSONResult {
 	status := "ok"
-	if result.Before.OK && !result.After.OK {
+	if result.IsBreaking() {
 		status = "breaking"
-	} else if !result.Before.OK {
+	} else if result.IsInvalidBefore() {
 		status = "invalid_before"
 	}
 
@@ -111,15 +133,16 @@ func newJSONResult(result check.Result) JSONResult {
 			File: result.Query.File,
 			Line: result.Query.StartLine,
 		},
-		Status: status,
-		Before: newJSONOutcome(result.Before),
-		After:  newJSONOutcome(result.After),
+		Status:      status,
+		Before:      newJSONOutcome(result.Before),
+		After:       newJSONOutcome(result.After),
+		ShapeChange: newJSONShapeChange(result.ShapeChange),
 	}
 }
 
 func newJSONOutcome(outcome check.Outcome) JSONOutcome {
 	if outcome.OK {
-		return JSONOutcome{OK: true}
+		return JSONOutcome{OK: true, ResultShape: newJSONResultColumns(outcome.ResultShape)}
 	}
 
 	return JSONOutcome{
@@ -128,6 +151,60 @@ func newJSONOutcome(outcome check.Outcome) JSONOutcome {
 		Suggestion: check.Suggestion(outcome.Error),
 		Error:      newJSONDBError(outcome.Error),
 	}
+}
+
+func newJSONResultColumns(columns []check.ResultColumn) []JSONResultColumn {
+	if len(columns) == 0 {
+		return nil
+	}
+
+	out := make([]JSONResultColumn, 0, len(columns))
+	for _, column := range columns {
+		out = append(out, newJSONResultColumn(column))
+	}
+	return out
+}
+
+func newJSONResultColumn(column check.ResultColumn) JSONResultColumn {
+	return JSONResultColumn{
+		Name:        column.Name,
+		Type:        column.DataType,
+		DataTypeOID: column.DataTypeOID,
+	}
+}
+
+func newJSONShapeChange(change *check.ShapeChange) *JSONShapeChange {
+	if change == nil {
+		return nil
+	}
+
+	out := &JSONShapeChange{
+		Reason:      check.ShapeReason(change),
+		Suggestion:  check.ShapeSuggestion(change),
+		Differences: make([]JSONShapeDifference, 0, len(change.Differences)),
+	}
+	for _, difference := range change.Differences {
+		out.Differences = append(out.Differences, newJSONShapeDifference(difference))
+	}
+	return out
+}
+
+func newJSONShapeDifference(difference check.ShapeDifference) JSONShapeDifference {
+	return JSONShapeDifference{
+		Kind:     difference.Kind,
+		Position: difference.Position,
+		Before:   newJSONResultColumnPtr(difference.Before),
+		After:    newJSONResultColumnPtr(difference.After),
+		Message:  difference.Message,
+	}
+}
+
+func newJSONResultColumnPtr(column *check.ResultColumn) *JSONResultColumn {
+	if column == nil {
+		return nil
+	}
+	out := newJSONResultColumn(*column)
+	return &out
 }
 
 func newJSONDBError(err *check.DBError) *JSONDBError {

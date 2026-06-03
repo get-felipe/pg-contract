@@ -61,6 +61,43 @@ func TestNewJSONReportInvalidBefore(t *testing.T) {
 	}
 }
 
+func TestNewJSONReportShapeChange(t *testing.T) {
+	report := &check.Report{Results: []check.Result{
+		{
+			Query: query.Query{Name: "customers.list", File: "queries/list.sql", StartLine: 2},
+			Before: check.Outcome{OK: true, ResultShape: []check.ResultColumn{
+				{Name: "email", DataType: "text", DataTypeOID: 25, TypeModifier: -1},
+			}},
+			After: check.Outcome{OK: true, ResultShape: []check.ResultColumn{
+				{Name: "email", DataType: "character varying(320)", DataTypeOID: 1043, TypeModifier: 324},
+			}},
+			ShapeChange: &check.ShapeChange{Differences: []check.ShapeDifference{
+				{
+					Kind:     "column_type",
+					Position: 1,
+					Before:   &check.ResultColumn{Name: "email", DataType: "text", DataTypeOID: 25, TypeModifier: -1},
+					After:    &check.ResultColumn{Name: "email", DataType: "character varying(320)", DataTypeOID: 1043, TypeModifier: 324},
+					Message:  "column 1 \"email\" type changed from text to character varying(320)",
+				},
+			}},
+		},
+	}}
+
+	got := NewJSONReport(report)
+	if got.Status != "breaking" || got.Summary.Breaking != 1 {
+		t.Fatalf("expected breaking shape report, got %#v", got)
+	}
+	if got.Results[0].After.Error != nil || !got.Results[0].After.OK {
+		t.Fatalf("expected after outcome to remain OK, got %#v", got.Results[0].After)
+	}
+	if len(got.Results[0].After.ResultShape) != 1 || got.Results[0].After.ResultShape[0].Type != "character varying(320)" {
+		t.Fatalf("expected after result shape, got %#v", got.Results[0].After.ResultShape)
+	}
+	if got.Results[0].ShapeChange == nil || got.Results[0].ShapeChange.Differences[0].Kind != "column_type" {
+		t.Fatalf("expected shape_change details, got %#v", got.Results[0].ShapeChange)
+	}
+}
+
 func TestNewJSONReportIncludesManifestMetadata(t *testing.T) {
 	report := &check.Report{Results: []check.Result{
 		{

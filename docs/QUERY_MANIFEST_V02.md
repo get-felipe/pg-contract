@@ -157,6 +157,7 @@ Existing JSON and GitHub output fields should remain stable:
 - SQLSTATE
 - reason
 - suggestion
+- result shape metadata when returned columns change
 
 v0.2 adds optional `query_set` and `tags` fields for manifest results, but existing fields are not renamed or removed.
 

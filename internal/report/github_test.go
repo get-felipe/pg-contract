@@ -34,6 +34,40 @@ func TestWriteGitHubBreakingAnnotation(t *testing.T) {
 	}
 }
 
+func TestWriteGitHubShapeChangeAnnotation(t *testing.T) {
+	report := &check.Report{Results: []check.Result{
+		{
+			Query:  query.Query{Name: "customers.list", File: "queries/list.sql", StartLine: 2},
+			Before: check.Outcome{OK: true},
+			After:  check.Outcome{OK: true},
+			ShapeChange: &check.ShapeChange{Differences: []check.ShapeDifference{
+				{
+					Kind:     "column_type",
+					Position: 1,
+					Message:  "column 1 \"email\" type changed from text to character varying(320)",
+				},
+			}},
+		},
+	}}
+
+	var out bytes.Buffer
+	WriteGitHub(&out, report)
+
+	got := out.String()
+	for _, want := range []string{
+		"::error file=queries/list.sql,line=2,title=pg-contract%3A breaking%3A customers.list::",
+		"The query result columns changed between the before and after schemas.",
+		"column 1 \"email\" type changed from text to character varying(320)",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("expected output to contain %q, got:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "SQLSTATE") {
+		t.Fatalf("shape change annotation should not include SQLSTATE, got:\n%s", got)
+	}
+}
+
 func TestWriteGitHubInvalidBeforeAnnotation(t *testing.T) {
 	report := &check.Report{Results: []check.Result{
 		{

@@ -16,7 +16,7 @@ func WriteGitHub(w io.Writer, report *check.Report) {
 		writeGitHubAnnotation(w, "error", result, "invalid before", result.Before.Error)
 	}
 	for _, result := range breaking {
-		writeGitHubAnnotation(w, "error", result, "breaking", result.After.Error)
+		writeGitHubBreakingAnnotation(w, result)
 	}
 
 	if len(breaking) == 0 && len(invalidBefore) == 0 {
@@ -25,8 +25,19 @@ func WriteGitHub(w io.Writer, report *check.Report) {
 	}
 }
 
+func writeGitHubBreakingAnnotation(w io.Writer, result check.Result) {
+	if result.ShapeChange != nil && result.After.OK {
+		message := result.BreakingReason()
+		if summary := result.BreakingSummary(); summary != "" {
+			message += " " + summary + "."
+		}
+		writeGitHubAnnotationMessage(w, "error", result, "breaking", message)
+		return
+	}
+	writeGitHubAnnotation(w, "error", result, "breaking", result.BreakingError())
+}
+
 func writeGitHubAnnotation(w io.Writer, level string, result check.Result, status string, err *check.DBError) {
-	title := fmt.Sprintf("pg-contract: %s: %s", status, result.Query.Name)
 	message := check.Reason(err)
 	if err != nil {
 		if err.Code != "" {
@@ -36,7 +47,11 @@ func writeGitHubAnnotation(w io.Writer, level string, result check.Result, statu
 			message += " " + err.Message
 		}
 	}
+	writeGitHubAnnotationMessage(w, level, result, status, message)
+}
 
+func writeGitHubAnnotationMessage(w io.Writer, level string, result check.Result, status string, message string) {
+	title := fmt.Sprintf("pg-contract: %s: %s", status, result.Query.Name)
 	properties := map[string]string{
 		"file":  result.Query.File,
 		"line":  fmt.Sprintf("%d", result.Query.StartLine),

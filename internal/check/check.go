@@ -28,16 +28,37 @@ type Report struct {
 }
 
 type Result struct {
-	QuerySet string
-	Tags     []string
-	Query    query.Query
-	Before   Outcome
-	After    Outcome
+	QuerySet    string
+	Tags        []string
+	Query       query.Query
+	Before      Outcome
+	After       Outcome
+	ShapeChange *ShapeChange
 }
 
 type Outcome struct {
-	OK    bool
-	Error *DBError
+	OK          bool
+	Error       *DBError
+	ResultShape []ResultColumn
+}
+
+type ResultColumn struct {
+	Name         string
+	DataType     string
+	DataTypeOID  uint32
+	TypeModifier int32
+}
+
+type ShapeChange struct {
+	Differences []ShapeDifference
+}
+
+type ShapeDifference struct {
+	Kind     string
+	Position int
+	Before   *ResultColumn
+	After    *ResultColumn
+	Message  string
 }
 
 type DBError struct {
@@ -190,12 +211,16 @@ func Run(ctx context.Context, opts Options) (*Report, error) {
 		return nil, fmt.Errorf("apply after schema: %w", err)
 	}
 
+	beforeTypeNames := map[typeKey]string{}
+	afterTypeNames := map[typeKey]string{}
+
 	report := &Report{Results: make([]Result, 0, len(queries))}
 	for i, q := range queries {
 		result := Result{Query: q}
 		params := cfg.Params(q.Name)
-		result.Before = prepareQuery(ctx, beforeConn, fmt.Sprintf("pg_contract_before_%d", i+1), q, params)
-		result.After = prepareQuery(ctx, afterConn, fmt.Sprintf("pg_contract_after_%d", i+1), q, params)
+		result.Before = prepareQuery(ctx, beforeConn, fmt.Sprintf("pg_contract_before_%d", i+1), q, params, beforeTypeNames)
+		result.After = prepareQuery(ctx, afterConn, fmt.Sprintf("pg_contract_after_%d", i+1), q, params, afterTypeNames)
+		result.ShapeChange = compareResultShapes(result.Before, result.After)
 		report.Results = append(report.Results, result)
 	}
 
@@ -262,6 +287,9 @@ func runManifest(ctx context.Context, opts Options, cfg *config.Config) (*Report
 	}
 	defer afterConn.Close(context.Background())
 
+	beforeTypeNames := map[typeKey]string{}
+	afterTypeNames := map[typeKey]string{}
+
 	report := &Report{Results: make([]Result, 0, total)}
 	for setIndex, loadedSet := range loaded {
 		querySet := loadedSet.set
@@ -286,8 +314,9 @@ func runManifest(ctx context.Context, opts Options, cfg *config.Config) (*Report
 				Query:    q,
 			}
 			params := cfg.Params(q.Name)
-			result.Before = prepareQuery(ctx, beforeConn, fmt.Sprintf("pg_contract_before_%d_%d", setIndex+1, queryIndex+1), q, params)
-			result.After = prepareQuery(ctx, afterConn, fmt.Sprintf("pg_contract_after_%d_%d", setIndex+1, queryIndex+1), q, params)
+			result.Before = prepareQuery(ctx, beforeConn, fmt.Sprintf("pg_contract_before_%d_%d", setIndex+1, queryIndex+1), q, params, beforeTypeNames)
+			result.After = prepareQuery(ctx, afterConn, fmt.Sprintf("pg_contract_after_%d_%d", setIndex+1, queryIndex+1), q, params, afterTypeNames)
+			result.ShapeChange = compareResultShapes(result.Before, result.After)
 			report.Results = append(report.Results, result)
 		}
 	}
@@ -394,25 +423,212 @@ func querySetsHaveSchema(querySets []config.QuerySet) bool {
 	return false
 }
 
-func prepareQuery(ctx context.Context, conn *pgx.Conn, preparedName string, q query.Query, params []string) Outcome {
-	if len(params) > 0 {
-		statement := fmt.Sprintf("PREPARE %s (%s) AS %s", preparedName, strings.Join(params, ", "), q.SQL)
-		if _, err := conn.PgConn().Exec(ctx, statement).ReadAll(); err != nil {
-			return Outcome{Error: pgError(err)}
-		}
-		if err := conn.Deallocate(ctx, preparedName); err != nil {
-			return Outcome{Error: pgError(err)}
-		}
-		return Outcome{OK: true}
+type typeKey struct {
+	oid      uint32
+	modifier int32
+}
+
+func prepareQuery(ctx context.Context, conn *pgx.Conn, preparedName string, q query.Query, params []string, typeNames map[typeKey]string) Outcome {
+	paramOIDs, paramErr := resolveParamOIDs(ctx, conn, params)
+	if paramErr != nil {
+		return Outcome{Error: paramErr}
 	}
 
-	if _, err := conn.Prepare(ctx, preparedName, q.SQL); err != nil {
+	description, err := conn.PgConn().Prepare(ctx, preparedName, q.SQL, paramOIDs)
+	if err != nil {
+		_ = conn.Deallocate(ctx, preparedName)
 		return Outcome{Error: pgError(err)}
 	}
-	if err := conn.Deallocate(ctx, preparedName); err != nil {
-		return Outcome{Error: pgError(err)}
+
+	resultShape, shapeErr := resultShape(ctx, conn, description.Fields, typeNames)
+	deallocateErr := conn.Deallocate(ctx, preparedName)
+	if shapeErr != nil {
+		return Outcome{Error: shapeErr}
 	}
-	return Outcome{OK: true}
+	if deallocateErr != nil {
+		return Outcome{Error: pgError(deallocateErr)}
+	}
+
+	return Outcome{OK: true, ResultShape: resultShape}
+}
+
+func resolveParamOIDs(ctx context.Context, conn *pgx.Conn, params []string) ([]uint32, *DBError) {
+	if len(params) == 0 {
+		return nil, nil
+	}
+
+	oids := make([]uint32, 0, len(params))
+	for _, param := range params {
+		var oid uint32
+		if err := conn.QueryRow(ctx, "select $1::regtype::oid", param).Scan(&oid); err != nil {
+			return nil, pgError(err)
+		}
+		oids = append(oids, oid)
+	}
+	return oids, nil
+}
+
+func resultShape(ctx context.Context, conn *pgx.Conn, fields []pgconn.FieldDescription, typeNames map[typeKey]string) ([]ResultColumn, *DBError) {
+	shape := make([]ResultColumn, 0, len(fields))
+	for _, field := range fields {
+		dataType, err := formatDataType(ctx, conn, field.DataTypeOID, field.TypeModifier, typeNames)
+		if err != nil {
+			return nil, pgError(err)
+		}
+		shape = append(shape, ResultColumn{
+			Name:         field.Name,
+			DataType:     dataType,
+			DataTypeOID:  field.DataTypeOID,
+			TypeModifier: field.TypeModifier,
+		})
+	}
+	return shape, nil
+}
+
+func formatDataType(ctx context.Context, conn *pgx.Conn, oid uint32, modifier int32, typeNames map[typeKey]string) (string, error) {
+	key := typeKey{oid: oid, modifier: modifier}
+	if name, ok := typeNames[key]; ok {
+		return name, nil
+	}
+
+	var name string
+	if err := conn.QueryRow(ctx, "select pg_catalog.format_type($1::oid, $2::integer)", oid, modifier).Scan(&name); err != nil {
+		return "", err
+	}
+	typeNames[key] = name
+	return name, nil
+}
+
+func compareResultShapes(before Outcome, after Outcome) *ShapeChange {
+	if !before.OK || !after.OK {
+		return nil
+	}
+
+	differences := compareColumns(before.ResultShape, after.ResultShape)
+	if len(differences) == 0 {
+		return nil
+	}
+	return &ShapeChange{Differences: differences}
+}
+
+func compareColumns(before []ResultColumn, after []ResultColumn) []ShapeDifference {
+	var differences []ShapeDifference
+	shared := len(before)
+	if len(after) < shared {
+		shared = len(after)
+	}
+
+	for i := 0; i < shared; i++ {
+		beforeColumn := before[i]
+		afterColumn := after[i]
+		position := i + 1
+		if beforeColumn.Name != afterColumn.Name {
+			differences = append(differences, ShapeDifference{
+				Kind:     "column_name",
+				Position: position,
+				Before:   &beforeColumn,
+				After:    &afterColumn,
+				Message:  fmt.Sprintf("column %d name changed from %q to %q", position, beforeColumn.Name, afterColumn.Name),
+			})
+		}
+		if beforeColumn.DataType != afterColumn.DataType {
+			differences = append(differences, ShapeDifference{
+				Kind:     "column_type",
+				Position: position,
+				Before:   &beforeColumn,
+				After:    &afterColumn,
+				Message:  fmt.Sprintf("column %d %q type changed from %s to %s", position, afterColumn.Name, beforeColumn.DataType, afterColumn.DataType),
+			})
+		}
+	}
+
+	for i := shared; i < len(before); i++ {
+		beforeColumn := before[i]
+		position := i + 1
+		differences = append(differences, ShapeDifference{
+			Kind:     "column_removed",
+			Position: position,
+			Before:   &beforeColumn,
+			Message:  fmt.Sprintf("column %d %q was removed from the result", position, beforeColumn.Name),
+		})
+	}
+
+	for i := shared; i < len(after); i++ {
+		afterColumn := after[i]
+		position := i + 1
+		differences = append(differences, ShapeDifference{
+			Kind:     "column_added",
+			Position: position,
+			After:    &afterColumn,
+			Message:  fmt.Sprintf("column %d %q was added to the result", position, afterColumn.Name),
+		})
+	}
+
+	return differences
+}
+
+func ShapeReason(change *ShapeChange) string {
+	if change == nil {
+		return ""
+	}
+	return "The query result columns changed between the before and after schemas."
+}
+
+func ShapeSuggestion(change *ShapeChange) string {
+	if change == nil {
+		return ""
+	}
+	return "Keep returned column names, order, and types stable until callers are updated, or deploy the query and caller changes together."
+}
+
+func ShapeSummary(change *ShapeChange) string {
+	if change == nil || len(change.Differences) == 0 {
+		return ""
+	}
+	summary := change.Differences[0].Message
+	if extra := len(change.Differences) - 1; extra > 0 {
+		summary = fmt.Sprintf("%s (+%d more)", summary, extra)
+	}
+	return summary
+}
+
+func (result Result) IsBreaking() bool {
+	return result.Before.OK && (!result.After.OK || result.ShapeChange != nil)
+}
+
+func (result Result) IsInvalidBefore() bool {
+	return !result.Before.OK
+}
+
+func (result Result) BreakingReason() string {
+	if result.ShapeChange != nil && result.After.OK {
+		return ShapeReason(result.ShapeChange)
+	}
+	return Reason(result.After.Error)
+}
+
+func (result Result) BreakingSuggestion() string {
+	if result.ShapeChange != nil && result.After.OK {
+		return ShapeSuggestion(result.ShapeChange)
+	}
+	return Suggestion(result.After.Error)
+}
+
+func (result Result) BreakingSummary() string {
+	if result.ShapeChange != nil && result.After.OK {
+		return ShapeSummary(result.ShapeChange)
+	}
+	if result.After.Error != nil {
+		return result.After.Error.Message
+	}
+	return ""
+}
+
+func (result Result) BreakingError() *DBError {
+	if result.ShapeChange != nil && result.After.OK {
+		return nil
+	}
+	return result.After.Error
 }
 
 func pgError(err error) *DBError {
@@ -446,7 +662,7 @@ func (r *Report) Breaking() []Result {
 
 	var breaking []Result
 	for _, result := range r.Results {
-		if result.Before.OK && !result.After.OK {
+		if result.IsBreaking() {
 			breaking = append(breaking, result)
 		}
 	}
@@ -460,7 +676,7 @@ func (r *Report) InvalidBefore() []Result {
 
 	var invalid []Result
 	for _, result := range r.Results {
-		if !result.Before.OK {
+		if result.IsInvalidBefore() {
 			invalid = append(invalid, result)
 		}
 	}

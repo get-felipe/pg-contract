@@ -32,3 +32,40 @@ func TestWriteTextBreaking(t *testing.T) {
 		}
 	}
 }
+
+func TestWriteTextShapeChange(t *testing.T) {
+	report := &check.Report{Results: []check.Result{
+		{
+			Query:  query.Query{Name: "customers.list", File: "queries/list.sql", StartLine: 2},
+			Before: check.Outcome{OK: true},
+			After:  check.Outcome{OK: true},
+			ShapeChange: &check.ShapeChange{Differences: []check.ShapeDifference{
+				{
+					Kind:     "column_type",
+					Position: 1,
+					Message:  "column 1 \"email\" type changed from text to character varying(320)",
+				},
+			}},
+		},
+	}}
+
+	var out bytes.Buffer
+	WriteText(&out, report)
+
+	got := out.String()
+	for _, want := range []string{
+		"FAIL customers.list",
+		"The query result columns changed",
+		"Result shape change:",
+		"column 1 \"email\" type changed from text to character varying(320)",
+		"works before and after",
+		"Summary: 1 query checked, 1 breaking change found.",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("expected output to contain %q, got:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "Postgres error:") {
+		t.Fatalf("shape change output should not include Postgres error section, got:\n%s", got)
+	}
+}

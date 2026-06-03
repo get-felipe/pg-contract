@@ -6,11 +6,11 @@ Postgres query compatibility checks for schema changes.
 
 > Do the application SQL queries that work against the current Postgres schema still prepare successfully against the proposed schema?
 
-It is not a schema diff tool, migration runner, ORM, or hosted service. It validates real SQL against real Postgres schemas and reports the exact query, source file, SQLSTATE, and diagnostic reason when a schema change breaks an existing query.
+It is not a schema diff tool, migration runner, ORM, or hosted service. It validates real SQL against real Postgres schemas and reports the exact query, source file, SQLSTATE, diagnostic reason, and returned-column contract when a schema change breaks an existing query.
 
 ## Status
 
-Pre-release alpha. The core `check` command works for `.sql` query files, user-provided Postgres URLs, optional schema SQL files, query manifest v0.2, JSON output, and GitHub Actions annotations.
+Pre-release alpha. The core `check` command works for `.sql` query files, user-provided Postgres URLs, optional schema SQL files, query result shape comparison, query manifest v0.2, JSON output, and GitHub Actions annotations.
 
 The project is useful for early adopters, but command flags and report fields may still change before a stable release.
 
@@ -22,6 +22,7 @@ Schema diff tools can tell you what changed in the database. Migration linters c
 
 - Prepare the same SQL against a before schema and an after schema.
 - Treat valid-before/fail-after as a breaking application contract change.
+- Treat changed result column names, order, or types as a breaking application contract change.
 - Use Postgres itself as the source of truth for query validity.
 - Keep diagnostics close to the query file that needs attention.
 - Fit into local development and pull-request checks without owning your migration workflow.
@@ -179,7 +180,7 @@ pg-contract check \
   --format json
 ```
 
-JSON reports include status, summary counts, query source locations, SQLSTATE, and diagnostic fields. They do not include database URLs or raw query text.
+JSON reports include status, summary counts, query source locations, SQLSTATE, diagnostic fields, and result shape changes. They do not include database URLs or raw query text.
 
 See [Diagnostics](docs/DIAGNOSTICS.md) for the SQLSTATE mappings behind text, JSON, and GitHub annotation output.
 
@@ -214,7 +215,7 @@ Near-term:
 - Prepare the next alpha release with broader fixture coverage.
 - Improve diagnostics for more Postgres SQLSTATEs.
 - Add PR-focused documentation for common CI setups.
-- Add focused fixtures for result-shape limitations and additional SQLSTATEs.
+- Document result-shape limitations and add focused fixtures for additional SQLSTATEs.
 - Add tag filtering for manifest workflows.
 
 Later:
@@ -252,6 +253,7 @@ make example-view-changed
 make example-function-signature
 make example-enum-value
 make example-search-path
+make example-result-shape
 make example-typed-params
 make example-manifest-v02
 make example-basic FORMAT=json
@@ -267,6 +269,7 @@ In scope:
 - Local CLI and GitHub Action workflows.
 - SQL files and explicit query metadata.
 - Clear diagnostics for valid-before/fail-after breakages.
+- Returned-column shape checks for names, order, and types.
 
 Out of scope:
 

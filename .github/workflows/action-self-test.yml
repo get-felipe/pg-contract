@@ -54,6 +54,24 @@ jobs:
           echo "::error title=pg-contract self-test::breaking-change example should fail the action"
           exit 1
 
+      - name: Run result-shape example
+        id: result_shape
+        uses: ./
+        continue-on-error: true
+        with:
+          before-url: postgres://postgres:postgres@localhost:${{ job.services.postgres.ports['5432'] }}/pg_contract_before?sslmode=disable
+          after-url: postgres://postgres:postgres@localhost:${{ job.services.postgres.ports['5432'] }}/pg_contract_after?sslmode=disable
+          schema-before: examples/result-shape/schema-before.sql
+          schema-after: examples/result-shape/schema-after.sql
+          queries: examples/result-shape/queries
+          no-config: true
+
+      - name: Assert result-shape example failed
+        if: steps.result_shape.outcome != 'failure'
+        run: |
+          echo "::error title=pg-contract self-test::result-shape example should fail the action"
+          exit 1
+
       - name: Run manifest v0.2 breaking-change example
         id: manifest
         uses: ./

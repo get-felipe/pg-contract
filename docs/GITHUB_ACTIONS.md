@@ -110,11 +110,11 @@ steps:
 
 The command exits with:
 
-- `0` when no valid-before/fail-after breakages are found.
-- `1` when at least one breaking schema change is found.
+- `0` when no valid-before/fail-after or result-shape breakages are found.
+- `1` when at least one breaking schema contract change is found.
 - `2` when the check cannot run cleanly or a query is already invalid against the before schema.
 
-Annotations intentionally include query names, files, lines, SQLSTATE, and concise Postgres diagnostics. They do not include database URLs or raw query text.
+Annotations intentionally include query names, files, lines, SQLSTATE when available, concise Postgres diagnostics, and result-shape summaries. They do not include database URLs or raw query text.
 
 ## Repository Self-Test
 

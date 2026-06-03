@@ -15,6 +15,7 @@ Build a narrow local CLI that proves the core compatibility check before adding 
 - [x] Add idempotent example fixtures for column removal, ambiguous column, missing table, changed views, function signature changes, enum value changes, and `search_path` changes.
 - [x] Implement schema loading into user-provided Postgres databases.
 - [x] Implement query preparation against the before and after schemas.
+- [x] Compare prepared statement result column names, order, and types.
 - [x] Add strict YAML config for explicit query parameter types.
 - [x] Add `init` command to generate starter config from query files.
 - [x] Auto-load `pg-contract.yaml` from the current directory, with `--no-config` opt-out.

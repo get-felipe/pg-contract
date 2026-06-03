@@ -157,6 +157,17 @@ pg-contract check \
   --query-set app
 ```
 
+Use tags for narrower checks inside selected query sets:
+
+```sh
+pg-contract check \
+  --before-url "$PG_CONTRACT_BEFORE_URL" \
+  --after-url "$PG_CONTRACT_AFTER_URL" \
+  --config pg-contract.yaml \
+  --query-set app \
+  --tag customer-facing
+```
+
 See [Configuration](docs/CONFIGURATION.md) for details.
 
 ## Output Formats

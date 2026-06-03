@@ -136,7 +136,7 @@ pg-contract check \
   --config pg-contract.yaml
 ```
 
-Use repeatable `--query-set` flags for focused checks:
+Use repeatable `--query-set` and `--tag` flags for focused checks:
 
 ```sh
 pg-contract check \
@@ -144,10 +144,13 @@ pg-contract check \
   --after-url "$PG_CONTRACT_AFTER_URL" \
   --config pg-contract.yaml \
   --query-set app \
-  --query-set reporting
+  --query-set reporting \
+  --tag customer-facing
 ```
 
-When `--query-set` is provided, only matching query sets are loaded and checked. Unknown names fail before connecting to Postgres. Selected sets still run in manifest order. Run without `--query-set` to validate every query path and per-query override in the manifest.
+When `--query-set` is provided, only matching query sets are loaded and checked. When `--tag` is provided, only queries with any selected tag are checked. Query-set tags are inherited by every query in the set, and per-query tags add narrower labels. Unknown query set names and unknown tags fail before connecting to Postgres. Selected sets and queries still run in manifest order.
+
+Run without `--query-set` or `--tag` to validate every query path and per-query override in the manifest.
 
 Manifest paths are resolved relative to the manifest file. For example, if `--config config/pg-contract.yaml` contains `queries: queries`, `pg-contract` loads `config/queries`.
 
@@ -167,10 +170,10 @@ Schema files are applied in query set order to the supplied before and after dat
 | `query_sets[].schema.before` | No | Optional SQL files applied to the before database before preparing this set. |
 | `query_sets[].schema.after` | No | Optional SQL files applied to the after database before preparing this set. |
 | `query_sets[].prepare.search_path` | No | Per-set search path override. |
-| `query_sets[].tags` | No | Labels merged into each result from the set. Tags do not affect SQL semantics. |
+| `query_sets[].tags` | No | Labels merged into each result from the set. Tags can be selected with `--tag` and do not affect SQL semantics. |
 | `queries` | No | Per-query overrides keyed by sqlc-style query name. |
 | `queries.<name>.params` | No | Ordered Postgres parameter types for `$1`, `$2`, and so on. |
-| `queries.<name>.tags` | No | Labels merged into results for this query. |
+| `queries.<name>.tags` | No | Labels merged into results for this query and selectable with `--tag`. |
 
 `query_sets[].queries`, `query_sets[].schema.before`, and `query_sets[].schema.after` accept either a single string or a list of strings.
 

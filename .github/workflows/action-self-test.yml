@@ -81,6 +81,7 @@ jobs:
           after-url: postgres://postgres:postgres@localhost:${{ job.services.postgres.ports['5432'] }}/pg_contract_after?sslmode=disable
           config: examples/manifest-v02/pg-contract.yaml
           query-set: app
+          tag: customer-facing
 
       - name: Assert manifest v0.2 example failed
         if: steps.manifest.outcome != 'failure'

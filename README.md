@@ -32,7 +32,7 @@ Schema diff tools can tell you what changed in the database. Migration linters c
 From a tagged release:
 
 ```sh
-go install github.com/get-felipe/pg-contract/cmd/pg-contract@v0.1.0-alpha.5
+go install github.com/get-felipe/pg-contract/cmd/pg-contract@v0.1.0-alpha.6
 ```
 
 From source:
@@ -187,7 +187,7 @@ See [Diagnostics](docs/DIAGNOSTICS.md) for the SQLSTATE mappings behind text, JS
 ## GitHub Actions
 
 ```yaml
-- uses: get-felipe/pg-contract@v0.1.0-alpha.5
+- uses: get-felipe/pg-contract@v0.1.0-alpha.6
   with:
     before-url: ${{ secrets.PG_CONTRACT_BEFORE_URL }}
     after-url: ${{ secrets.PG_CONTRACT_AFTER_URL }}

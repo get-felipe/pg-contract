@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+No unreleased changes yet.
+
+## [0.1.0-alpha.6] - 2026-06-03
+
 ### Added
 
 - Result shape compatibility checks for returned column names, order, and types when queries prepare successfully on both schemas.

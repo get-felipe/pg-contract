@@ -10,7 +10,7 @@
 | `main` | Best effort |
 | Older pre-release tags | No |
 
-Until the first tagged alpha exists, only `main` is supported on a best-effort basis.
+Use the latest tagged alpha for reproducible security reports. Reports against `main` are accepted on a best-effort basis when they include the exact commit SHA.
 
 ## Reporting a Vulnerability
 

@@ -32,6 +32,14 @@ Build a narrow local CLI that proves the core compatibility check before adding 
 - [x] Add a workflow self-test that exercises the composite action against disposable Postgres services.
 - [x] Add a release workflow for tagged binaries and checksums.
 - [x] Add changelog and issue templates for the first alpha.
+- [x] Clarify positioning against sqlc verify, pGenie, migration tooling, and LSP-style validation.
+
+## Next Bets
+
+- [ ] Design local contract snapshots/baselines so CI can compare a proposed schema without requiring a live before database.
+- [ ] Expand result-shape documentation with examples and limitations for aliases, domains, composite types, and `select *`.
+- [ ] Add PR-focused documentation for common setup patterns: schema dumps, migration files, ephemeral databases, and externally managed before/after URLs.
+- [ ] Broaden diagnostics and fixtures for additional high-value Postgres SQLSTATEs.
 
 ## v0.1 Command Shape
 

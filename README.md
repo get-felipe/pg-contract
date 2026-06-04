@@ -27,6 +27,14 @@ Schema diff tools can tell you what changed in the database. Migration linters c
 - Keep diagnostics close to the query file that needs attention.
 - Fit into local development and pull-request checks without owning your migration workflow.
 
+## How It Compares
+
+`pg-contract` is intentionally narrower than most database delivery tools:
+
+- [`sqlc verify`](https://docs.sqlc.dev/en/latest/howto/verify.html) is the closest conceptual match: it checks whether existing queries keep working after schema changes. The documented workflow requires pushing schemas and queries to sqlc Cloud. `pg-contract` is local, standalone, and does not require sqlc-generated code.
+- [`pGenie`](https://pgenie.io/docs/) validates SQL against a real Postgres schema, but its main product is type-safe client SDK generation and signature files. `pg-contract` is only a compatibility gate.
+- Migration tools and linters such as [`pg-schema-diff`](https://github.com/stripe/pg-schema-diff), [`Atlas`](https://atlasgo.io/versioned/lint), [`Squawk`](https://github.com/sbdchd/squawk), and [`pgroll`](https://github.com/xataio/pgroll) help plan, lint, or execute migrations. `pg-contract` does not generate or apply migrations; it checks whether application SQL survives the proposed schema.
+
 ## Install
 
 From a tagged release:
@@ -223,11 +231,10 @@ See [GitHub Actions](docs/GITHUB_ACTIONS.md) for a complete workflow.
 
 Near-term:
 
-- Prepare the next alpha release with broader fixture coverage.
 - Improve diagnostics for more Postgres SQLSTATEs.
 - Add PR-focused documentation for common CI setups.
 - Document result-shape limitations and add focused fixtures for additional SQLSTATEs.
-- Add tag filtering for manifest workflows.
+- Design a local contract snapshot/baseline workflow for CI setups that cannot keep two live databases available.
 
 Later:
 

@@ -239,6 +239,8 @@ JSON reports can add optional baseline metadata later:
 - Add query SQL hashing in `internal/query` or a small shared helper.
 - Add tests for deterministic encoding, decoding, and hash mismatch behavior.
 
+Status: implemented as the internal contract model and deterministic serialization foundation. The CLI does not expose snapshot generation yet.
+
 ### Phase 2: `snapshot` Command
 
 - Add CLI command parsing for `pg-contract snapshot`.

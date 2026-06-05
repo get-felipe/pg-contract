@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Internal contract snapshot model with deterministic JSON serialization, validation, and SQL hashing helpers.
+
 ### Changed
 
 - Clarified public positioning against adjacent Postgres tooling and refreshed the reference analysis.

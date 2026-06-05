@@ -242,6 +242,10 @@ Later:
 - Richer GitHub PR summaries.
 - Package manager distribution once the release shape is stable.
 
+Design notes:
+
+- [Contract snapshots](docs/CONTRACT_SNAPSHOTS.md)
+
 ## Development
 
 Requirements:

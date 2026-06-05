@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 
 - Clarified public positioning against adjacent Postgres tooling and refreshed the reference analysis.
+- Added a design draft for local contract snapshots and baseline checks.
 
 ## [0.1.0-alpha.7] - 2026-06-03
 

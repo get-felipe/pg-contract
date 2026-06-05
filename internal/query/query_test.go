@@ -3,6 +3,7 @@ package query
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -149,5 +150,17 @@ func TestLoadPathsRejectsDuplicateNamesAcrossRoots(t *testing.T) {
 
 	if _, err := LoadPaths([]string{left, right}); err == nil {
 		t.Fatal("expected duplicate query name error")
+	}
+}
+
+func TestSQLSHA256UsesLoadedSQLNormalization(t *testing.T) {
+	first := SQLSHA256("\nselect 1;\n")
+	second := SQLSHA256("select 1;")
+
+	if first != second {
+		t.Fatalf("expected hashes to match, got %q and %q", first, second)
+	}
+	if !strings.HasPrefix(first, "sha256:") || len(first) != len("sha256:")+64 {
+		t.Fatalf("unexpected hash format: %q", first)
 	}
 }

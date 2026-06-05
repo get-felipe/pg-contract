@@ -1,6 +1,8 @@
 package query
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,6 +18,11 @@ type Query struct {
 	File      string
 	SQL       string
 	StartLine int
+}
+
+func SQLSHA256(sql string) string {
+	sum := sha256.Sum256([]byte(strings.TrimSpace(sql)))
+	return "sha256:" + hex.EncodeToString(sum[:])
 }
 
 func LoadDir(root string) ([]Query, error) {

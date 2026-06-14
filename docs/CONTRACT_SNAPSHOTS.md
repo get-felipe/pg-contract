@@ -123,7 +123,7 @@ Top-level shape:
   "version": "0.1",
   "tool": {
     "name": "pg-contract",
-    "version": "0.1.0-alpha.7"
+    "version": "0.1.0-alpha.8"
   },
   "source": {
     "config": "pg-contract.yaml",

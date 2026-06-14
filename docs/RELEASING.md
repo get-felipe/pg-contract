@@ -35,8 +35,8 @@ Before publishing:
 Create and push the semantic version tag:
 
 ```sh
-git tag v0.1.0-alpha.7
-git push origin v0.1.0-alpha.7
+git tag v0.1.0-alpha.8
+git push origin v0.1.0-alpha.8
 ```
 
 The release workflow runs only for tags matching `v*.*.*`. It builds Linux, macOS, and Windows binaries for `amd64` and `arm64`, uploads archives to the GitHub Release, and publishes a SHA-256 checksum file.

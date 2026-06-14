@@ -314,6 +314,166 @@ queries:
 	}
 }
 
+func TestRunSnapshotMissingBeforeURL(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	code := Run([]string{"snapshot", "--queries", "queries", "--out", "-"}, &stdout, &stderr)
+
+	if code != 2 {
+		t.Fatalf("expected exit code 2, got %d", code)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("expected empty stdout, got %q", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "missing required --before-url") {
+		t.Fatalf("expected missing flag message, got %q", stderr.String())
+	}
+}
+
+func TestRunSnapshotRejectsConfigWithNoConfig(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	code := Run([]string{"snapshot", "--config", "pg-contract.yaml", "--no-config"}, &stdout, &stderr)
+
+	if code != 2 {
+		t.Fatalf("expected exit code 2, got %d", code)
+	}
+	if !strings.Contains(stderr.String(), "cannot be used together") {
+		t.Fatalf("expected conflict error, got %q", stderr.String())
+	}
+}
+
+func TestRunSnapshotRejectsEmptyConfigFlag(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	code := Run([]string{"snapshot", "--config", ""}, &stdout, &stderr)
+
+	if code != 2 {
+		t.Fatalf("expected exit code 2, got %d", code)
+	}
+	if !strings.Contains(stderr.String(), "--config cannot be empty") {
+		t.Fatalf("expected empty config error, got %q", stderr.String())
+	}
+}
+
+func TestRunSnapshotRejectsEmptyOut(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	code := Run([]string{"snapshot", "--out", ""}, &stdout, &stderr)
+
+	if code != 2 {
+		t.Fatalf("expected exit code 2, got %d", code)
+	}
+	if !strings.Contains(stderr.String(), "--out cannot be empty") {
+		t.Fatalf("expected empty output error, got %q", stderr.String())
+	}
+}
+
+func TestRunSnapshotRefusesOverwriteBeforeConnecting(t *testing.T) {
+	root := t.TempDir()
+	outPath := filepath.Join(root, "pg-contract.lock.json")
+	if err := os.WriteFile(outPath, []byte("existing"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	code := Run([]string{"snapshot", "--before-url", "postgres://%zz", "--queries", "missing", "--out", outPath}, &stdout, &stderr)
+
+	if code != 2 {
+		t.Fatalf("expected exit code 2, got %d", code)
+	}
+	if !strings.Contains(stderr.String(), "already exists") {
+		t.Fatalf("expected already exists error, got %q", stderr.String())
+	}
+	if strings.Contains(stderr.String(), "connect before database") {
+		t.Fatalf("expected overwrite protection before connecting, got %q", stderr.String())
+	}
+}
+
+func TestRunSnapshotPassesQuerySetSelection(t *testing.T) {
+	root := t.TempDir()
+	queriesDir := filepath.Join(root, "queries")
+	if err := os.MkdirAll(queriesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(queriesDir, "find.sql"), []byte("-- name: customers.find\nselect 1;\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	configFile := filepath.Join(root, "pg-contract.yaml")
+	if err := os.WriteFile(configFile, []byte(`version: "0.2"
+query_sets:
+  - name: app
+    queries: queries
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	code := Run([]string{
+		"snapshot",
+		"--before-url", "postgres://%zz",
+		"--config", configFile,
+		"--query-set", "missing",
+		"--out", "-",
+	}, &stdout, &stderr)
+
+	if code != 2 {
+		t.Fatalf("expected exit code 2, got %d", code)
+	}
+	if !strings.Contains(stderr.String(), "unknown query set \"missing\"") {
+		t.Fatalf("expected query-set selection to reach snapshot, got %q", stderr.String())
+	}
+}
+
+func TestRunSnapshotPassesTagSelection(t *testing.T) {
+	root := t.TempDir()
+	queriesDir := filepath.Join(root, "queries")
+	if err := os.MkdirAll(queriesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(queriesDir, "find.sql"), []byte("-- name: customers.find\nselect 1;\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	configFile := filepath.Join(root, "pg-contract.yaml")
+	if err := os.WriteFile(configFile, []byte(`version: "0.2"
+query_sets:
+  - name: app
+    queries: queries
+queries:
+  customers.find:
+    tags:
+      - customer-facing
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	code := Run([]string{
+		"snapshot",
+		"--before-url", "postgres://%zz",
+		"--config", configFile,
+		"--tag", "missing",
+		"--out", "-",
+	}, &stdout, &stderr)
+
+	if code != 2 {
+		t.Fatalf("expected exit code 2, got %d", code)
+	}
+	if !strings.Contains(stderr.String(), "unknown tag \"missing\"") {
+		t.Fatalf("expected tag selection to reach snapshot, got %q", stderr.String())
+	}
+}
+
 func TestRunInitWritesConfig(t *testing.T) {
 	root := t.TempDir()
 	queriesDir := filepath.Join(root, "queries")

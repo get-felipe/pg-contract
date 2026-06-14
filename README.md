@@ -176,6 +176,29 @@ pg-contract check \
   --tag customer-facing
 ```
 
+## Contract Snapshots
+
+Generate a local query contract from the current schema when you want a committed baseline artifact:
+
+```sh
+pg-contract snapshot \
+  --before-url "$PG_CONTRACT_BEFORE_URL" \
+  --config pg-contract.yaml \
+  --out pg-contract.lock.json
+```
+
+Legacy query roots are also supported:
+
+```sh
+pg-contract snapshot \
+  --before-url "$PG_CONTRACT_BEFORE_URL" \
+  --schema-before ./schema-before.sql \
+  --queries ./queries \
+  --out pg-contract.lock.json
+```
+
+The snapshot command prepares every selected query against the before database and writes deterministic JSON. It refuses to overwrite an existing file unless `--force` is supplied; use `--out -` to write JSON to stdout.
+
 See [Configuration](docs/CONFIGURATION.md) for details.
 
 ## Output Formats
@@ -234,7 +257,7 @@ Near-term:
 - Improve diagnostics for more Postgres SQLSTATEs.
 - Add PR-focused documentation for common CI setups.
 - Document result-shape limitations and add focused fixtures for additional SQLSTATEs.
-- Design a local contract snapshot/baseline workflow for CI setups that cannot keep two live databases available.
+- Implement `check --contract` to validate proposed schemas against committed snapshots.
 
 Later:
 

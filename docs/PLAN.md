@@ -38,7 +38,7 @@ Build a narrow local CLI that proves the core compatibility check before adding 
 
 - [x] Design local contract snapshots/baselines so CI can compare a proposed schema without requiring a live before database.
 - [x] Add the internal contract snapshot model, JSON serialization, validation, and SQL hash helper.
-- [ ] Implement `pg-contract snapshot` to write `pg-contract.lock.json`.
+- [x] Implement `pg-contract snapshot` to write `pg-contract.lock.json`.
 - [ ] Implement `pg-contract check --contract pg-contract.lock.json`.
 - [ ] Expand result-shape documentation with examples and limitations for aliases, domains, composite types, and `select *`.
 - [ ] Add PR-focused documentation for common setup patterns: schema dumps, migration files, ephemeral databases, and externally managed before/after URLs.

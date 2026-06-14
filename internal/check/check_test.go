@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	contractfile "github.com/get-felipe/pg-contract/internal/contract"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -386,6 +387,84 @@ func TestRunRejectsTagSelectionOutsideManifest(t *testing.T) {
 	}
 }
 
+func TestSnapshotRejectsQuerySetSelectionOutsideManifest(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	_, err := Snapshot(ctx, SnapshotOptions{
+		BeforeURL: "postgres://%zz",
+		QuerySets: []string{"app"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "--query-set/--tag require config version 0.2") {
+		t.Fatalf("expected query-set manifest requirement before legacy validation, got %v", err)
+	}
+}
+
+func TestSnapshotManifestRejectsCLIQueryInputs(t *testing.T) {
+	root := t.TempDir()
+	queriesDir := filepath.Join(root, "queries")
+	if err := os.MkdirAll(queriesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	configFile := filepath.Join(root, "pg-contract.yaml")
+	if err := os.WriteFile(configFile, []byte(`version: "0.2"
+query_sets:
+  - name: app
+    queries: queries
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	_, err := Snapshot(ctx, SnapshotOptions{
+		BeforeURL:   "postgres://%zz",
+		QueriesPath: queriesDir,
+		ConfigPath:  configFile,
+	})
+	if err == nil || !strings.Contains(err.Error(), "--queries cannot be used with config version 0.2") {
+		t.Fatalf("expected manifest/queries conflict before connecting, got %v", err)
+	}
+}
+
+func TestSnapshotManifestRejectsUnknownTagBeforeConnecting(t *testing.T) {
+	root := t.TempDir()
+	queriesDir := filepath.Join(root, "queries")
+	if err := os.MkdirAll(queriesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(queriesDir, "find.sql"), []byte("-- name: customers.find\nselect 1;\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	configFile := filepath.Join(root, "pg-contract.yaml")
+	if err := os.WriteFile(configFile, []byte(`version: "0.2"
+query_sets:
+  - name: app
+    queries: queries
+    tags:
+      - app
+queries:
+  customers.find:
+    tags:
+      - customer-facing
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	_, err := Snapshot(ctx, SnapshotOptions{
+		BeforeURL:  "postgres://%zz",
+		ConfigPath: configFile,
+		Tags:       []string{"billing"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "unknown tag \"billing\"") {
+		t.Fatalf("expected unknown tag before connecting, got %v", err)
+	}
+}
+
 func TestRunManifestRejectsUnknownQuerySetBeforeConnecting(t *testing.T) {
 	root := t.TempDir()
 	queriesDir := filepath.Join(root, "queries")
@@ -733,6 +812,187 @@ queries:
 	}
 	if breaking[0].After.Error == nil || breaking[0].After.Error.Code != "42703" {
 		t.Fatalf("expected undefined_column 42703, got %#v", breaking[0].After.Error)
+	}
+}
+
+func TestSnapshotWithPostgres(t *testing.T) {
+	beforeURL := os.Getenv("PG_CONTRACT_TEST_BEFORE_URL")
+	if beforeURL == "" {
+		t.Skip("set PG_CONTRACT_TEST_BEFORE_URL to run integration test")
+	}
+
+	root := t.TempDir()
+	queriesDir := filepath.Join(root, "queries")
+	if err := os.MkdirAll(queriesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	table := fmt.Sprintf("pg_contract_snapshot_%d", time.Now().UnixNano())
+	beforeSchema := filepath.Join(root, "before.sql")
+	queryFile := filepath.Join(queriesDir, "find_customer.sql")
+	defer dropIntegrationTable(t, beforeURL, table)
+
+	if err := os.WriteFile(beforeSchema, []byte(fmt.Sprintf(`
+drop table if exists %[1]s;
+create table %[1]s (
+  id uuid primary key,
+  email text not null
+);
+`, table)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(queryFile, []byte(fmt.Sprintf(`-- name: customers.find_snapshot
+select id, email
+from %s
+where id = $1;
+`, table)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	snapshot, err := Snapshot(ctx, SnapshotOptions{
+		BeforeURL:    beforeURL,
+		SchemaBefore: beforeSchema,
+		QueriesPath:  queriesDir,
+		ToolVersion:  "0.1.0-test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := snapshot.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Source.Mode != contractfile.SourceModeLegacy {
+		t.Fatalf("expected legacy source mode, got %q", snapshot.Source.Mode)
+	}
+	if !snapshot.Scope.Complete {
+		t.Fatal("expected complete snapshot scope")
+	}
+	if snapshot.Tool.Version != "0.1.0-test" {
+		t.Fatalf("expected tool version to be captured, got %q", snapshot.Tool.Version)
+	}
+	if len(snapshot.Queries) != 1 {
+		t.Fatalf("expected 1 query, got %#v", snapshot.Queries)
+	}
+	contractQuery := snapshot.Queries[0]
+	if contractQuery.Name != "customers.find_snapshot" {
+		t.Fatalf("unexpected query name %q", contractQuery.Name)
+	}
+	if !strings.HasPrefix(contractQuery.SQLSHA256, "sha256:") {
+		t.Fatalf("expected sha256 query identity, got %q", contractQuery.SQLSHA256)
+	}
+	if len(contractQuery.Params) != 0 {
+		t.Fatalf("expected no configured params, got %#v", contractQuery.Params)
+	}
+	if len(contractQuery.ResultShape) != 2 {
+		t.Fatalf("expected 2 result columns, got %#v", contractQuery.ResultShape)
+	}
+	if contractQuery.ResultShape[0].Name != "id" || contractQuery.ResultShape[0].Type != "uuid" {
+		t.Fatalf("unexpected id column shape: %#v", contractQuery.ResultShape[0])
+	}
+	if contractQuery.ResultShape[1].Name != "email" || contractQuery.ResultShape[1].Type != "text" {
+		t.Fatalf("unexpected email column shape: %#v", contractQuery.ResultShape[1])
+	}
+}
+
+func TestSnapshotWithPostgresManifest(t *testing.T) {
+	beforeURL := os.Getenv("PG_CONTRACT_TEST_BEFORE_URL")
+	if beforeURL == "" {
+		t.Skip("set PG_CONTRACT_TEST_BEFORE_URL to run integration test")
+	}
+
+	root := t.TempDir()
+	queriesDir := filepath.Join(root, "queries")
+	if err := os.MkdirAll(queriesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	schemaName := fmt.Sprintf("contract_snapshot_%d", time.Now().UnixNano())
+	beforeSchema := filepath.Join(root, "before.sql")
+	queryFile := filepath.Join(queriesDir, "find_customer.sql")
+	configFile := filepath.Join(root, "pg-contract.yaml")
+	defer dropIntegrationSchema(t, beforeURL, schemaName)
+
+	if err := os.WriteFile(beforeSchema, []byte(fmt.Sprintf(`
+drop schema if exists %[1]s cascade;
+create schema %[1]s;
+create table %[1]s.customers (
+  id uuid primary key,
+  email text not null
+);
+`, schemaName)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(queryFile, []byte(`-- name: customers.find_snapshot_manifest
+select id, email
+from customers
+where id = $1;
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configFile, []byte(fmt.Sprintf(`version: "0.2"
+query_sets:
+  - name: app
+    queries: queries
+    schema:
+      before: before.sql
+    prepare:
+      search_path:
+        - %[1]s
+        - public
+    tags:
+      - app
+queries:
+  customers.find_snapshot_manifest:
+    params:
+      - uuid
+    tags:
+      - customer-facing
+`, schemaName)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	snapshot, err := Snapshot(ctx, SnapshotOptions{
+		BeforeURL:   beforeURL,
+		ConfigPath:  configFile,
+		Tags:        []string{"customer-facing"},
+		ToolVersion: "0.1.0-test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := snapshot.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Source.Mode != contractfile.SourceModeManifestV02 {
+		t.Fatalf("expected manifest source mode, got %q", snapshot.Source.Mode)
+	}
+	if snapshot.Scope.Complete {
+		t.Fatal("expected focused snapshot scope")
+	}
+	if len(snapshot.Scope.Tags) != 1 || snapshot.Scope.Tags[0] != "customer-facing" {
+		t.Fatalf("unexpected snapshot tags scope: %#v", snapshot.Scope.Tags)
+	}
+	if len(snapshot.Queries) != 1 {
+		t.Fatalf("expected 1 query, got %#v", snapshot.Queries)
+	}
+	contractQuery := snapshot.Queries[0]
+	if contractQuery.QuerySet != "app" {
+		t.Fatalf("expected app query set, got %q", contractQuery.QuerySet)
+	}
+	if len(contractQuery.Tags) != 2 || contractQuery.Tags[0] != "app" || contractQuery.Tags[1] != "customer-facing" {
+		t.Fatalf("unexpected query tags: %#v", contractQuery.Tags)
+	}
+	if len(contractQuery.Params) != 1 || contractQuery.Params[0] != "uuid" {
+		t.Fatalf("unexpected params: %#v", contractQuery.Params)
+	}
+	if len(contractQuery.ResultShape) != 2 {
+		t.Fatalf("expected 2 result columns, got %#v", contractQuery.ResultShape)
 	}
 }
 

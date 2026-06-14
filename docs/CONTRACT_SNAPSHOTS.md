@@ -1,6 +1,6 @@
 # Contract Snapshots
 
-Status: design draft.
+Status: `pg-contract snapshot` is implemented. `check --contract` remains planned.
 
 `pg-contract` currently compares query compatibility by preparing each query against two live Postgres schemas: a before database and an after database. This is the most direct model, but it can be awkward in CI systems where the current schema is not easy to recreate for every pull request.
 
@@ -37,7 +37,7 @@ The artifact is intentionally local. It should not require a hosted state store,
 - [`pGenie`](https://pgenie.io/docs/) records resolved query signatures in committed files and uses freeze files to make generated artifacts reproducible. Its product shape is code generation; `pg-contract` should only use the local-artifact lesson.
 - Postgres [`PREPARE`](https://www.postgresql.org/docs/current/sql-prepare.html) remains the source of truth for snapshot capture. A snapshot records what Postgres accepted for the before contract; it does not replace Postgres validation for the proposed schema.
 
-## Proposed CLI
+## CLI Shape
 
 Generate a snapshot from a live current schema:
 
@@ -97,7 +97,7 @@ pg-contract check \
 - records successful query contracts;
 - fails with exit code `2` if any selected query is invalid before.
 
-The command should refuse to overwrite an existing snapshot unless `--force` is supplied. `--out -` should write to stdout.
+The command refuses to overwrite an existing snapshot unless `--force` is supplied. `--out -` writes deterministic JSON to stdout.
 
 ### `check --contract`
 
@@ -239,7 +239,7 @@ JSON reports can add optional baseline metadata later:
 - Add query SQL hashing in `internal/query` or a small shared helper.
 - Add tests for deterministic encoding, decoding, and hash mismatch behavior.
 
-Status: implemented as the internal contract model and deterministic serialization foundation. The CLI does not expose snapshot generation yet.
+Status: implemented as the internal contract model and deterministic serialization foundation.
 
 ### Phase 2: `snapshot` Command
 
@@ -247,6 +247,8 @@ Status: implemented as the internal contract model and deterministic serializati
 - Refactor check loading so snapshot generation can reuse query discovery, schema application, search path setup, parameter resolution, and prepare logic.
 - Write `pg-contract.lock.json`.
 - Add examples and documentation.
+
+Status: implemented for legacy query roots and manifest v0.2 query sets/tags.
 
 ### Phase 3: `check --contract`
 
@@ -262,9 +264,6 @@ Status: implemented as the internal contract model and deterministic serializati
 
 ## Open Questions
 
-- Should paths be repository-relative, config-relative, or exactly as loaded?
-- Should SQL hashing use raw file bytes, trimmed SQL, or the normalized SQL string currently prepared?
-- Should a focused snapshot be allowed, or should snapshots always represent the full manifest?
 - Should `check --contract` load current query files by default, or should the first release support a pure `--contract` mode that trusts the snapshot completely?
 - Should the first implementation support snapshot updating, or require regenerating the file explicitly?
 
@@ -272,7 +271,7 @@ Status: implemented as the internal contract model and deterministic serializati
 
 - Store normalized SQL hash, not raw SQL.
 - Omit `created_at` from the first implementation for stable diffs.
-- Use repository-relative paths when they can be derived; otherwise preserve the loaded path.
+- Preserve the loaded query file path in the first implementation.
 - Treat new, missing, or changed query hashes as exit code `2`.
 - Require explicit snapshot regeneration for contract updates.
 - Implement snapshot generation before `check --contract` so the artifact format is tested in isolation.

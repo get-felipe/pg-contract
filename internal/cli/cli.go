@@ -13,6 +13,7 @@ import (
 
 	"github.com/get-felipe/pg-contract/internal/check"
 	"github.com/get-felipe/pg-contract/internal/config"
+	contractfile "github.com/get-felipe/pg-contract/internal/contract"
 	"github.com/get-felipe/pg-contract/internal/query"
 	"github.com/get-felipe/pg-contract/internal/report"
 )
@@ -27,6 +28,8 @@ const usage = `pg-contract validates whether existing application SQL still work
 Usage:
   pg-contract check --before-url BEFORE --after-url AFTER --queries queries/
   pg-contract check --before-url BEFORE --after-url AFTER --config pg-contract.yaml
+  pg-contract snapshot --before-url BEFORE --queries queries/ --out pg-contract.lock.json
+  pg-contract snapshot --before-url BEFORE --config pg-contract.yaml --out pg-contract.lock.json
   pg-contract init --queries queries/ --out pg-contract.yaml
   pg-contract version
 `
@@ -43,6 +46,8 @@ func Run(args []string, stdout io.Writer, stderr io.Writer) int {
 		return 0
 	case "check":
 		return runCheck(args[1:], stdout, stderr)
+	case "snapshot":
+		return runSnapshot(args[1:], stdout, stderr)
 	case "init":
 		return runInit(args[1:], stdout, stderr)
 	default:
@@ -152,6 +157,131 @@ func runCheck(args []string, stdout io.Writer, stderr io.Writer) int {
 		report.WriteGitHub(stdout, result)
 	}
 	return check.ExitCode(result)
+}
+
+func runSnapshot(args []string, stdout io.Writer, stderr io.Writer) int {
+	var opts check.SnapshotOptions
+	var timeout time.Duration
+	querySets := stringListFlag{name: "query-set"}
+	tags := stringListFlag{name: "tag"}
+	noConfig := false
+	outPath := "pg-contract.lock.json"
+	force := false
+
+	flags := flag.NewFlagSet("snapshot", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	flags.StringVar(&opts.BeforeURL, "before-url", "", "Postgres URL for the current before schema")
+	flags.StringVar(&opts.BeforeURL, "dsn-before", "", "alias for --before-url")
+	flags.StringVar(&opts.SchemaBefore, "schema-before", "", "optional SQL file to apply to the before database")
+	flags.StringVar(&opts.QueriesPath, "queries", "", "directory containing .sql query files; optional with config version 0.2 query_sets")
+	flags.StringVar(&opts.ConfigPath, "config", "", "optional pg-contract YAML config file")
+	flags.BoolVar(&noConfig, "no-config", noConfig, "do not auto-load pg-contract.yaml")
+	flags.Var(&querySets, "query-set", "manifest v0.2 query set to snapshot; may be repeated")
+	flags.Var(&tags, "tag", "manifest v0.2 tag to snapshot; may be repeated")
+	flags.StringVar(&outPath, "out", outPath, "output contract path, or - for stdout")
+	flags.BoolVar(&force, "force", force, "overwrite an existing contract file")
+	flags.DurationVar(&timeout, "timeout", 30*time.Second, "maximum time for snapshot generation")
+
+	if err := flags.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0
+		}
+		return 2
+	}
+	if flags.NArg() > 0 {
+		fmt.Fprintf(stderr, "unexpected argument: %s\n", flags.Arg(0))
+		return 2
+	}
+	if outPath == "" {
+		fmt.Fprintln(stderr, "snapshot failed: --out cannot be empty")
+		return 2
+	}
+	opts.QuerySets = querySets.Values()
+	opts.Tags = tags.Values()
+	opts.ToolVersion = resolvedVersion()
+	configWasSet := flagWasSet(flags, "config")
+	if noConfig && configWasSet {
+		fmt.Fprintln(stderr, "snapshot failed: --config and --no-config cannot be used together")
+		return 2
+	}
+	if configWasSet && opts.ConfigPath == "" {
+		fmt.Fprintln(stderr, "snapshot failed: --config cannot be empty")
+		return 2
+	}
+	if !noConfig && !configWasSet {
+		configPath, err := detectConfig(defaultConfigPath)
+		if err != nil {
+			fmt.Fprintf(stderr, "snapshot failed: %v\n", err)
+			return 2
+		}
+		opts.ConfigPath = configPath
+	}
+	if err := ensureOutputCanBeWritten(outPath, force); err != nil {
+		fmt.Fprintf(stderr, "snapshot failed: %v\n", err)
+		return 2
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	snapshot, err := check.Snapshot(ctx, opts)
+	if err != nil {
+		fmt.Fprintf(stderr, "snapshot failed: %v\n", err)
+		return 2
+	}
+	if err := snapshot.Validate(); err != nil {
+		fmt.Fprintf(stderr, "snapshot failed: %v\n", err)
+		return 2
+	}
+
+	if outPath == "-" {
+		if err := contractfile.Write(stdout, snapshot); err != nil {
+			fmt.Fprintf(stderr, "snapshot failed: write stdout: %v\n", err)
+			return 2
+		}
+		return 0
+	}
+
+	flagsValue := os.O_WRONLY | os.O_CREATE | os.O_TRUNC
+	if !force {
+		flagsValue = os.O_WRONLY | os.O_CREATE | os.O_EXCL
+	}
+	file, err := os.OpenFile(outPath, flagsValue, 0o644)
+	if err != nil {
+		if errors.Is(err, os.ErrExist) {
+			fmt.Fprintf(stderr, "snapshot failed: %s already exists; use --force to overwrite\n", outPath)
+			return 2
+		}
+		fmt.Fprintf(stderr, "snapshot failed: open %s: %v\n", outPath, err)
+		return 2
+	}
+	defer file.Close()
+
+	if err := contractfile.Write(file, snapshot); err != nil {
+		fmt.Fprintf(stderr, "snapshot failed: write %s: %v\n", outPath, err)
+		return 2
+	}
+
+	fmt.Fprintf(stdout, "Wrote %s with %d query entries.\n", outPath, len(snapshot.Queries))
+	return 0
+}
+
+func ensureOutputCanBeWritten(outPath string, force bool) error {
+	if outPath == "-" || force {
+		return nil
+	}
+
+	info, err := os.Stat(outPath)
+	if err == nil {
+		if info.IsDir() {
+			return fmt.Errorf("%s is a directory", outPath)
+		}
+		return fmt.Errorf("%s already exists; use --force to overwrite", outPath)
+	}
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	return fmt.Errorf("stat %s: %w", outPath, err)
 }
 
 type stringListFlag struct {

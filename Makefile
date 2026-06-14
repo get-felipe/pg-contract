@@ -113,7 +113,7 @@ test:
 test-integration:
 	@test -n "$(PG_CONTRACT_TEST_BEFORE_URL)" || (echo "PG_CONTRACT_TEST_BEFORE_URL is required"; exit 2)
 	@test -n "$(PG_CONTRACT_TEST_AFTER_URL)" || (echo "PG_CONTRACT_TEST_AFTER_URL is required"; exit 2)
-	go test ./internal/check -run TestRunWithPostgres -count=1 -v
+	go test ./internal/check -run 'Test(Run|Snapshot)WithPostgres' -count=1 -v
 
 tidy:
 	go mod tidy

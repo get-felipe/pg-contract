@@ -9,11 +9,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - Internal contract snapshot model with deterministic JSON serialization, validation, and SQL hashing helpers.
+- `pg-contract snapshot` command to generate `pg-contract.lock.json` from a live before schema.
 
 ### Changed
 
 - Clarified public positioning against adjacent Postgres tooling and refreshed the reference analysis.
-- Added a design draft for local contract snapshots and baseline checks.
+- Documented local contract snapshots and the remaining baseline check workflow.
 
 ## [0.1.0-alpha.7] - 2026-06-03
 
